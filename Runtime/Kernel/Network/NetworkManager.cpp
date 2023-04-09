@@ -6,12 +6,6 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-NetworkManager* NetworkManager::instance = nullptr;
-
-NetworkManager::NetworkManager() { }
-
-NetworkManager::~NetworkManager() { }
-
 void NetworkManager::Initialize(NetworkConfig* config)
 {
     switch (config->listenerCfg.protocol)

@@ -5,19 +5,6 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-I18nTextManager* I18nTextManager::instance = nullptr;
-
-I18nTextManager::I18nTextManager() { }
-
-I18nTextManager::~I18nTextManager()
-{
-    if (i18nMmapPtr != nullptr)
-    {
-        ::munmap(i18nMmapPtr, fdStat.st_size);
-        ::close(dataFd);
-    }
-}
-
 void I18nTextManager::SetI18nTextDirectoryPath(const_char_ptr i18nTextDirPath)
 {
     this->i18nTextDirPath = const_cast<char_ptr>(i18nTextDirPath);

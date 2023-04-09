@@ -6,12 +6,6 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-GameTimeManager* GameTimeManager::instance = nullptr;
-
-GameTimeManager::GameTimeManager() { }
-
-GameTimeManager::~GameTimeManager() { }
-
 void GameTimeManager::Clear()
 {
     GameTimerBase* currNode = headNode;

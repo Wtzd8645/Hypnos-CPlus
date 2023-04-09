@@ -5,8 +5,6 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-GameDataManager* GameDataManager::instance = nullptr;
-
 uint32 BkdrHash(const_uint8_ptr bytes, int32 size)
 {
     uint32 hash = 0;
@@ -15,17 +13,6 @@ uint32 BkdrHash(const_uint8_ptr bytes, int32 size)
         hash = hash * 31 + bytes[i];
     }
     return hash;
-}
-
-GameDataManager::GameDataManager() { }
-
-GameDataManager::~GameDataManager()
-{
-    if (dataMmapPtr != nullptr)
-    {
-        ::munmap(dataMmapPtr, fdStat.st_size);
-        ::close(dataFd);
-    }
 }
 
 void GameDataManager::CreateMmap(const_char_ptr dataFilePath)

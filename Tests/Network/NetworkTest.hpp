@@ -37,7 +37,7 @@ void NetworkPasses()
     networkCfg->listenerCfg.maxConnections = 4096;
     networkCfg->listenerCfg.maxPacketBytes = 1024;
     networkCfg->listenerCfg.requestProducer = new RequestProducer();
-    NetworkManager::Instance()->Initialize(networkCfg);
+    NetworkManager::Instance().Initialize(networkCfg);
 }
 
 } // namespace Tests

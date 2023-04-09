@@ -25,7 +25,7 @@ public:
     inline void Start()
     {
         isStop = false;
-        GameTimeManager::Instance()->AddLast(this);
+        GameTimeManager::Instance().AddLast(this);
     }
 
     inline void Stop()

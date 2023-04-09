@@ -17,30 +17,17 @@ public:
     typedef std::chrono::steady_clock steady_clock;
     typedef std::chrono::steady_clock::time_point time_point;
 
-    inline static GameTimeManager* const Instance() noexcept { return instance; }
-
-    inline static void CreateInstance() noexcept
+    inline static GameTimeManager& Instance() noexcept
     {
-        if (instance == nullptr)
-        {
-            instance = new GameTimeManager();
-        }
-    }
-
-    inline static void ReleaseInstance() noexcept
-    {
-        if (instance != nullptr)
-        {
-            delete instance;
-            instance = nullptr;
-        }
+        static GameTimeManager instance;
+        return instance;
     }
 
 private:
-    static GameTimeManager* instance;
-
-    GameTimeManager();
-    ~GameTimeManager();
+    GameTimeManager() { }
+    GameTimeManager(GameTimeManager const&) = delete;
+    void operator=(GameTimeManager const&) = delete;
+    ~GameTimeManager() { }
 
 public:
     inline float64 DeltaTime() const noexcept { return timeInfo.deltaTime; }
@@ -53,7 +40,7 @@ public:
 
 private:
     const float64 DeltaTimeTickRatio = 1000000000.0f; // NOTE: second / nanosecond
-    uint64 minDeltaTimeTick = 16000000ul; // NOTE: nanoseconds
+    const uint64 minDeltaTimeTick = 16000000ul; // NOTE: nanoseconds
 
     time_point frameStart;
     GameTime timeInfo;
