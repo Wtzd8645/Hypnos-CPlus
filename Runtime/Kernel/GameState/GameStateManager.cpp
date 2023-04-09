@@ -1,13 +1,8 @@
 #include "GameStateManager.hpp"
+#include "GameStateManager.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
-
-GameStateManager* GameStateManager::instance = nullptr;
-
-GameStateManager::GameStateManager() { }
-
-GameStateManager::~GameStateManager() { }
 
 void GameStateManager::Initialize(GameStateBase* startState)
 {
@@ -20,12 +15,24 @@ void GameStateManager::Release()
 
 void GameStateManager::Start()
 {
+    if (currentState == nullptr)
+    {
+        return;
+    }
+
     currentState->Enter();
 }
 
 void GameStateManager::Update()
 {
     currentState->Update();
+}
+
+void GameStateManager::Switch()
+{
+    currentState->Exit();
+    currentState = nullptr;
+    currentState->Enter();
 }
 
 } // namespace Hypnos

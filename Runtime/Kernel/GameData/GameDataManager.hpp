@@ -18,30 +18,25 @@ namespace Hypnos {
 class GameDataManager
 {
 public:
-    inline static GameDataManager* const Instance() noexcept { return instance; }
-
-    inline static void CreateInstance() noexcept
+    inline static GameDataManager& Instance() noexcept
     {
-        if (instance == nullptr)
-        {
-            instance = new GameDataManager();
-        }
-    }
-
-    inline static void ReleaseInstance() noexcept
-    {
-        if (instance != nullptr)
-        {
-            delete instance;
-            instance = nullptr;
-        }
+        static GameDataManager instance;
+        return instance;
     }
 
 private:
-    static GameDataManager* instance;
+    GameDataManager() { }
+    GameDataManager(GameDataManager const&) = delete;
+    void operator=(GameDataManager const&) = delete;
 
-    GameDataManager();
-    ~GameDataManager();
+    ~GameDataManager()
+    {
+        if (dataMmapPtr != nullptr)
+        {
+            ::munmap(dataMmapPtr, fdStat.st_size);
+            ::close(dataFd);
+        }
+    }
 
 public:
     void CreateMmap(const_char_ptr dataFilePath);
@@ -129,7 +124,7 @@ public:
         {
             // throw new AccessViolationException();
         }
-        return GameDataManager::Instance()->GetString(*(pointer + index));
+        return GameDataManager::Instance().GetString(*(pointer + index));
     }
 
     NStringArray(int32* ptr, int32 len)
@@ -155,7 +150,7 @@ public:
         {
             // throw new AccessViolationException();
         }
-        return T(GameDataManager::Instance()->GetDataPointer(*(pointer + index)));
+        return T(GameDataManager::Instance().GetDataPointer(*(pointer + index)));
     }
 
     NReferenceArray(int32* ptr, int32 len)

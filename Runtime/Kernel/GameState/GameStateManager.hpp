@@ -9,30 +9,17 @@ namespace Hypnos {
 class GameStateManager
 {
 public:
-    inline static GameStateManager* const Instance() noexcept { return instance; }
-
-    inline static void CreateInstance() noexcept
+    inline static GameStateManager& Instance() noexcept
     {
-        if (instance == nullptr)
-        {
-            instance = new GameStateManager();
-        }
-    }
-
-    inline static void ReleaseInstance() noexcept
-    {
-        if (instance != nullptr)
-        {
-            delete instance;
-            instance = nullptr;
-        }
+        static GameStateManager instance;
+        return instance;
     }
 
 private:
-    static GameStateManager* instance;
-
-    GameStateManager();
-    ~GameStateManager();
+    GameStateManager() { }
+    GameStateManager(GameStateManager const&) = delete;
+    void operator=(GameStateManager const&) = delete;
+    ~GameStateManager() { }
 
 public:
     void Initialize(GameStateBase* startState);
@@ -41,8 +28,10 @@ public:
     void Start();
     void Update();
 
+    void Switch();
+
 private:
-    GameStateBase* currentState = nullptr; // TODO: Temp
+    GameStateBase* currentState = nullptr;
 };
 
 } // namespace Hypnos

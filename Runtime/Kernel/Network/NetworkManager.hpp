@@ -12,30 +12,17 @@ namespace Hypnos {
 class NetworkManager
 {
 public:
-    inline static NetworkManager* const Instance() noexcept { return instance; }
-
-    inline static void CreateInstance() noexcept
+    inline static NetworkManager& Instance() noexcept
     {
-        if (instance == nullptr)
-        {
-            instance = new NetworkManager();
-        }
-    }
-
-    inline static void ReleaseInstance() noexcept
-    {
-        if (instance != nullptr)
-        {
-            delete instance;
-            instance = nullptr;
-        }
+        static NetworkManager instance;
+        return instance;
     }
 
 private:
-    static NetworkManager* instance;
-
-    NetworkManager();
-    ~NetworkManager();
+    NetworkManager() { }
+    NetworkManager(NetworkManager const&) = delete;
+    void operator=(NetworkManager const&) = delete;
+    ~NetworkManager() { }
 
 private:
     SocketListenerBase* socketListener;

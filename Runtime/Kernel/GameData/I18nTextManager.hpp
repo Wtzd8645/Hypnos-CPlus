@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #endif
 
-#include <Core/Runtime//Type.hpp>
+#include <Core/Runtime/Type.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -18,30 +18,25 @@ namespace Hypnos {
 class I18nTextManager
 {
 public:
-    inline static I18nTextManager* const Instance() noexcept { return instance; }
-
-    inline static void CreateInstance() noexcept
+    inline static I18nTextManager& Instance() noexcept
     {
-        if (instance == nullptr)
-        {
-            instance = new I18nTextManager();
-        }
-    }
-
-    inline static void ReleaseInstance() noexcept
-    {
-        if (instance != nullptr)
-        {
-            delete instance;
-            instance = nullptr;
-        }
+        static I18nTextManager instance;
+        return instance;
     }
 
 private:
-    static I18nTextManager* instance;
+    I18nTextManager() { }
+    I18nTextManager(I18nTextManager const&) = delete;
+    void operator=(I18nTextManager const&) = delete;
 
-    I18nTextManager();
-    ~I18nTextManager();
+    ~I18nTextManager()
+    {
+        if (i18nMmapPtr != nullptr)
+        {
+            ::munmap(i18nMmapPtr, fdStat.st_size);
+            ::close(dataFd);
+        }
+    }
 
 public:
     inline const_char_ptr CurrentLanguage() const noexcept { return currentLanguage; }
@@ -76,7 +71,7 @@ public:
         {
             //throw new AccessViolationException();
         }
-        return I18nTextManager::Instance()->GetText(*(pointer + index));
+        return I18nTextManager::Instance().GetText(*(pointer + index));
     }
 
     NI18nTextArray(uint32* ptr, int32 len)
