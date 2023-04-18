@@ -1,4 +1,4 @@
-﻿#include "../Kernel.hpp"
+﻿#include <Foundation/Logging.hpp>
 #include "TcpListener.hpp"
 #include "UdpListener.hpp"
 #include "NetworkManager.hpp"

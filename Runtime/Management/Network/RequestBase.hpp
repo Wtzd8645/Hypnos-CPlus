@@ -1,7 +1,7 @@
 #ifndef REQUEST_BASE_HPP_
 #define REQUEST_BASE_HPP_
 
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "PacketReader.hpp"
 

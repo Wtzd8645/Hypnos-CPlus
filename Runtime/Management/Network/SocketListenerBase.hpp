@@ -18,7 +18,7 @@
 #include <Core/Runtime/Container.hpp>
 #include <Core/Runtime/Delegate.hpp>
 #include <Core/Runtime/Thread.hpp>
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"
 #include "RequestProducerBase.hpp"

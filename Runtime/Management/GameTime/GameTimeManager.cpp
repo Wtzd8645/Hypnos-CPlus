@@ -1,5 +1,5 @@
 #include <thread>
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "GameTimeManager.hpp"
 #include "GameTimerBase.hpp"
 

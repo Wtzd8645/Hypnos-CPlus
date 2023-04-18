@@ -1,4 +1,4 @@
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "TcpListener.hpp"
 
 namespace Blanketmen {
@@ -21,11 +21,11 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     WSADATA wsaData;
     if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
-        Kernel::LogError("[NetworkManager] WSAStartup failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::LogError("[NetworkManager] WSAStartup failed. ErrorCode: %d", ::WSAGetLastError());
     }
     else
     {
-        Kernel::Log("[NetworkManager] WSAStartup success.");
+        Logging::Log("[NetworkManager] WSAStartup success.");
     }
     addrinfo hints;
     ::memset(&hints, 0, sizeof(hints));
@@ -37,7 +37,7 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     addrinfo* addrInfo = nullptr;
     if (::getaddrinfo(NULL, DEFAULT_PORT, &hints, &addrInfo) != 0)
     {
-        Kernel::LogError("[NetworkManager] getaddrinfo failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::LogError("[NetworkManager] getaddrinfo failed. ErrorCode: %d", ::WSAGetLastError());
         return;
     }
 
@@ -45,7 +45,7 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     listenSocket = ::WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED); // 不是非阻塞套接字，但是重叠I/O套接字。
     if (listenSocket == INVALID_SOCKET)
     {
-        Kernel::LogError("[NetworkManager] WSASocket failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::LogError("[NetworkManager] WSASocket failed. ErrorCode: %d", ::WSAGetLastError());
         return;
     }
 
@@ -56,12 +56,12 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     // Show listen IP
     char ipAddr[INET_ADDRSTRLEN];
     ::inet_ntop(addrInfo->ai_family, addrInfo->ai_addr, ipAddr, sizeof(ipAddr));
-    Kernel::Log("[NetworkManager] Bind IP: %s", ipAddr);
+    Logging::Log("[NetworkManager] Bind IP: %s", ipAddr);
 
     // Bind
     if (::bind(listenSocket, addrInfo->ai_addr, (int)addrInfo->ai_addrlen) == SOCKET_ERROR)
     {
-        Kernel::LogError("[NetworkManager] Bind failed. ErrorCode: %ld", ::WSAGetLastError());
+        Logging::LogError("[NetworkManager] Bind failed. ErrorCode: %ld", ::WSAGetLastError());
         ::closesocket(listenSocket);
     }
     ::freeaddrinfo(addrInfo);
@@ -98,7 +98,7 @@ inline void TcpListener::Listen()
 {
     if (::listen(listenSocket, SOMAXCONN) == SOCKET_ERROR)
     {
-        Kernel::LogError("[NetworkManager] Listen failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::LogError("[NetworkManager] Listen failed. ErrorCode: %d", ::WSAGetLastError());
         ::closesocket(listenSocket);
         return;
     }
@@ -114,7 +114,7 @@ inline void TcpListener::Listen()
         useThreadCount = 1;
     }
 
-    Kernel::Log("[NetworkManager] Start listen. UseThreadCount: %d", useThreadCount);
+    Logging::Log("[NetworkManager] Start listen. UseThreadCount: %d", useThreadCount);
     for (int i = 0; i < useThreadCount; ++i)
     {
         iocpThreads.AddLast(new std::thread(&NetworkManager::ProcessEvents, this)); //_beginthreadex(NULL, 0, &NetworkManager::Process, (LPVOID)iocpHandle, 0, NULL);
@@ -148,7 +148,7 @@ void TcpListener::ProcessEvents()
         ::GetQueuedCompletionStatus(iocpHandle, &bytesTransferred, (PULONG_PTR)&client, (LPOVERLAPPED*)&iocpArgs, INFINITE);
         if (bytesTransferred == 0) // 連接結束
         {
-            Kernel::Log("[NetworkManager] Socket closed: %p", client);
+            Logging::Log("[NetworkManager] Socket closed: %p", client);
             ::closesocket(client->socket);
             delete iocpArgs;
             continue;
@@ -160,7 +160,7 @@ void TcpListener::ProcessEvents()
             continue;
         }
 
-        Kernel::Log("[NetworkManager] Receive: %d bytes", bytesTransferred);
+        Logging::Log("[NetworkManager] Receive: %d bytes", bytesTransferred);
         uint32 bytesProcessed = 0;
         while (bytesTransferred > 0)
         {
@@ -199,7 +199,7 @@ void TcpListener::ProcessEvents()
             uint8 seq = *reinterpret_cast<uint8_ptr>(dataBuf);
             if (seq != client->serialNumber)
             {
-                Kernel::LogError("[NetworkManager] SerialNumber is not equal. Client: %p", client);
+                Logging::LogError("[NetworkManager] SerialNumber is not equal. Client: %p", client);
                 ::closesocket(client->socket);
                 delete iocpArgs;
                 continue;
@@ -213,7 +213,7 @@ void TcpListener::ProcessEvents()
                 ::EnterCriticalSection(&requestLocker);
                 consumerRequests.AddLast(request);
                 ::LeaveCriticalSection(&requestLocker);
-                Kernel::Log("[NetworkManager] Unpack message successfully. msgId: %d", request->header.msgId);
+                Logging::Log("[NetworkManager] Unpack message successfully. msgId: %d", request->header.msgId);
             }
         }
 
@@ -224,7 +224,7 @@ void TcpListener::ProcessEvents()
 
 void TcpListener::Accept()
 {
-    Kernel::Log("[NetworkManager] Accept socket.");
+    Logging::Log("[NetworkManager] Accept socket.");
     sockaddr addr;
     int addrSize = sizeof(addr);
     while (true)
@@ -237,11 +237,11 @@ void TcpListener::Accept()
                 continue;
             }
 
-            Kernel::LogError("[NetworkManager] Accept failed. ErrorCode: %d", ::WSAGetLastError());
+            Logging::LogError("[NetworkManager] Accept failed. ErrorCode: %d", ::WSAGetLastError());
             continue;
         }
 
-        Kernel::Log("[NetworkManager] Accept socket successfully.");
+        Logging::Log("[NetworkManager] Accept socket successfully.");
         Connection* client = new Connection();
         client->socket = acceptedSocket;
 
@@ -261,7 +261,7 @@ inline void TcpListener::Receive(Connection* client, IocpEventArgs* iocpArgs)
     // Complete immediately
     if (bytesRecvd != 0) // TODO: 立即完成還是會發I/O消息，不知道是否需要處理這情況
     {
-        Kernel::LogWarning("[NetworkManager] Receive %d bytes immediately.", bytesRecvd);
+        Logging::LogWarning("[NetworkManager] Receive %d bytes immediately.", bytesRecvd);
     }
 }
 

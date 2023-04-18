@@ -2,7 +2,7 @@
 #ifndef ECHOMESSAGE_HPP_
 #define ECHOMESSAGE_HPP_
 
-#include <Kernel/Network.hpp>
+#include <Management/Network.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

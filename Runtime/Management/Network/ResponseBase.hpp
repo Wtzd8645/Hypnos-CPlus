@@ -2,7 +2,7 @@
 #define RESPONSE_BASE_HPP_
 
 #include <Core/Runtime/Container/Vector.hpp>
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "PacketWriter.hpp"
 

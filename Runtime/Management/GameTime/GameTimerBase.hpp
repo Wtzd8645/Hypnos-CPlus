@@ -14,6 +14,7 @@ class GameTimerBase
 {
 public:
     friend class GameTimeManager;
+
     virtual ~GameTimerBase() { }
 
     inline bool IsStop() const noexcept { return isStop; }
