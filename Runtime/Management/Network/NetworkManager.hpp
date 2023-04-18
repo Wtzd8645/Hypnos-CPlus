@@ -24,9 +24,8 @@ private:
     void operator=(NetworkManager const&) = delete;
     ~NetworkManager() { }
 
-private:
     SocketListenerBase* socketListener;
-    Container::UnorderedMap<uint16, Delegate<RequestBase*>*> requestHandlerMap;
+    Container::UnorderedMap<uint16, Delegate<RequestBase&>*> requestHandlerMap;
 
 public:
     void Initialize(NetworkConfig* config);
@@ -36,26 +35,28 @@ public:
     inline void Send(ResponseBase* response) { socketListener->Send(response); }
 
     template<typename TObj>
-    void Register(uint16 requestId, void(TObj::* const funcPtr)(RequestBase*), TObj* const obj)
+    void Register(uint16 reqId, typename Delegate<RequestBase&>::ObjectFunction<TObj>::ObjectPtr objPtr, typename Delegate<RequestBase&>::ObjectFunction<TObj>::MethodPtr mtdPtr)
     {
-        Delegate<RequestBase*>* del = requestHandlerMap[requestId];
+        Delegate<RequestBase&>* del = requestHandlerMap[reqId];
         if (del == nullptr)
         {
-            del = new Delegate<RequestBase*>(); // TODO: 刪除
-            requestHandlerMap[requestId] = del;
+            del = new Delegate<RequestBase&>(); // TODO: Delete this delegate.
+            requestHandlerMap[reqId] = del;
         }
-        del->Add<TObj>(funcPtr, obj);
+        else
+        {
+            del->Add<TObj>(objPtr, mtdPtr);
+        }
     }
 
     template<typename TObj>
-    void Unregister(uint16 requestId, void(TObj::* const funcPtr)(RequestBase*), TObj* const obj)
+    void Unregister(uint16 reqId, typename Delegate<RequestBase&>::ObjectFunction<TObj>::ObjectPtr objPtr, typename Delegate<RequestBase&>::ObjectFunction<TObj>::MethodPtr mtdPtr)
     {
-        Delegate<RequestBase*>* del = requestHandlerMap[requestId];
-        if (del == nullptr)
+        Delegate<RequestBase*>* del = requestHandlerMap[reqId];
+        if (del != nullptr)
         {
-            return;
+            del->Remove<TObj>(objPtr, mtdPtr);
         }
-        del->Remove<TObj>(funcPtr, obj);
     }
 };
 

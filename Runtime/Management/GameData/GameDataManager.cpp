@@ -1,5 +1,5 @@
 #include <cstring>
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "GameDataManager.hpp"
 
 namespace Blanketmen {
@@ -28,12 +28,12 @@ void GameDataManager::CreateMmap(const_char_ptr dataFilePath)
     dataMmapPtr = reinterpret_cast<char_ptr>(::mmap(0, fdStat.st_size, PROT_READ, MAP_SHARED, dataFd, 0));
     if (dataMmapPtr == MAP_FAILED)
     {
-        Kernel::Log("[GameDataManager] Create mmap fail: %d", errno);
+        Logging::Log("[GameDataManager] Create mmap fail: %d", errno);
         dataMmapPtr = nullptr;
         return;
     }
 
-    Kernel::Log("[GameDataManager] Create mmap successfully.");
+    Logging::Log("[GameDataManager] Create mmap successfully.");
 }
 
 int32 GameDataManager::GetKeyTableOffset(const_char_ptr tableName)

@@ -1,7 +1,7 @@
 #ifndef NETWORK_TEST_HPP_
 #define NETWORK_TEST_HPP_
 
-#include <Kernel/Network.hpp>
+#include <Management/Network.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

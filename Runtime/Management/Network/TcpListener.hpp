@@ -9,7 +9,7 @@ namespace Hypnos {
 class TcpListener : public SocketListenerBase
 {
 public:
-    TcpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase*>*>& reqestHandlerMap);
+    TcpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& reqestHandlerMap);
     ~TcpListener();
 
     inline void Listen() override;

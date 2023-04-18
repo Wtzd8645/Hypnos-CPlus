@@ -1,18 +1,18 @@
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "NetworkUtil.hpp"
 #include "TcpListener.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
 
-TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase*>*>& reqestHandlerMap) :
+TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& reqestHandlerMap) :
     SocketListenerBase(config, reqestHandlerMap)
 {
     // Create socket.
     listenSocket = ::socket(AF_INET, SOCK_STREAM, 0);
     if (listenSocket == INVALID_SOCKET)
     {
-        Kernel::LogError("[TcpListener] Create the listen socket failed. ErrorCode: %d", errno);
+        Logging::LogError("[TcpListener] Create the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -21,7 +21,7 @@ TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedM
     ((sockaddr_in*)&acceptedSockAddr)->sin_port = ::htons(DEFAULT_PORT);
     if (::bind(listenSocket, &acceptedSockAddr, sizeof(acceptedSockAddr)) == SOCKET_ERROR)
     {
-        Kernel::LogError("[TcpListener] Bind adderss to the listen socket failed. ErrorCode: %d", errno);
+        Logging::LogError("[TcpListener] Bind adderss to the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -29,14 +29,14 @@ TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedM
     int opts = ::fcntl(listenSocket, F_GETFL);
     if (opts == SOCKET_ERROR)
     {
-        Kernel::LogError("[TcpListener] Get flags from the listen socket failed. ErrorCode: %d", errno);
+        Logging::LogError("[TcpListener] Get flags from the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
     // Set the non-blocking flag to the socket file descriptor.
     if (::fcntl(listenSocket, F_SETFL, opts | O_NONBLOCK) == SOCKET_ERROR)
     {
-        Kernel::LogError("[TcpListener] Set the non-blocking flag to the listen socket failed. ErrorCode: %d", errno);
+        Logging::LogError("[TcpListener] Set the non-blocking flag to the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -44,7 +44,7 @@ TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedM
     epfd = ::epoll_create(maxConnections);
     if (epfd == INVALID_FD)
     {
-        Kernel::LogError("[TcpListener] Create epoll from the listen socket failed. ErrorCode: %d", errno);
+        Logging::LogError("[TcpListener] Create epoll from the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -53,14 +53,14 @@ TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedM
     epEvent.data.fd = listenSocket;
     if (::epoll_ctl(epfd, EPOLL_CTL_ADD, listenSocket, &epEvent))
     {
-        Kernel::LogError("[TcpListener] Register the listen socket epoll event failed. ErrorCode: %d", errno);
+        Logging::LogError("[TcpListener] Register the listen socket epoll event failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
     epEventBuf = new epoll_event[maxConnections];
 
     char ip[INET6_ADDRSTRLEN];
     ::inet_ntop(AF_INET, &((sockaddr_in*)&acceptedSockAddr)->sin_addr, ip, INET_ADDRSTRLEN);
-    Kernel::Log("[TcpListener] Create the listen socket success. Bind address: %s", ip);
+    Logging::Log("[TcpListener] Create the listen socket success. Bind address: %s", ip);
 }
 
 TcpListener::~TcpListener()
@@ -103,13 +103,13 @@ inline void TcpListener::Listen()
 {
     if (::listen(listenSocket, 128) == SOCKET_ERROR) // NOTE: backlog參數會與/proc/sys/net/core/somaxconn的值取最小值
     {
-        Kernel::Log("[TcpListener] The serve socket listen failed. ErrorCode: %d", errno);
+        Logging::Log("[TcpListener] The serve socket listen failed. ErrorCode: %d", errno);
         return;
     }
 
     receiveThread = new Thread(&TcpListener::ProcessEvents, this);
     sendThread = new Thread(&TcpListener::SendResponses, this);
-    Kernel::Log("[TcpListener] The server socket is listening.");
+    Logging::Log("[TcpListener] The server socket is listening.");
 }
 
 inline void TcpListener::Dispatch()
@@ -122,10 +122,11 @@ inline void TcpListener::Dispatch()
 
     for (auto it = consumerRequests->begin(); it != consumerRequests->end(); ++it)
     {
-        Delegate<RequestBase*>* handler = requestHandlerMap[(*it)->header.msgId];
+        Delegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
         if (handler != nullptr)
         {
-            (*handler)(*it);
+            (*handler)(**it);
+            delete *it;
         }
     }
     consumerRequests->clear();
@@ -155,7 +156,7 @@ void TcpListener::ProcessEvents()
                 continue;
             }
 
-            Kernel::Log("[TcpListener] Wait for epoll events failed. ErrorCode: %d", errorCode);
+            Logging::Log("[TcpListener] Wait for epoll events failed. ErrorCode: %d", errorCode);
             // TODO: Find an appropriate way to handle errors.
             continue;
         }
@@ -190,20 +191,20 @@ inline void TcpListener::Accept()
                 break;
             }
 
-            Kernel::LogError("[TcpListener] Accept socket failed. ErrorCode: %d", errno);
+            Logging::LogError("[TcpListener] Accept socket failed. ErrorCode: %d", errno);
             continue;
         }
 
         int opts = ::fcntl(listenSocket, F_GETFL);
         if (opts == SOCKET_ERROR)
         {
-            Kernel::LogError("[TcpListener] Get the socket flags when accept failed. ErrorCode: %d", errno);
+            Logging::LogError("[TcpListener] Get the socket flags when accept failed. ErrorCode: %d", errno);
             continue;
         }
 
         if (::fcntl(sock, F_SETFL, opts | O_NONBLOCK) == SOCKET_ERROR)
         {
-            Kernel::LogError("[TcpListener] Set the socket flags when accept failed. ErrorCode: %d", errno);
+            Logging::LogError("[TcpListener] Set the socket flags when accept failed. ErrorCode: %d", errno);
             continue;
         }
 
@@ -211,7 +212,7 @@ inline void TcpListener::Accept()
         epEvent.data.fd = sock;
         if (::epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &epEvent))
         {
-            Kernel::LogError("[TcpListener] Register the accepted socket epoll event failed. ErrorCode: %d", errno);
+            Logging::LogError("[TcpListener] Register the accepted socket epoll event failed. ErrorCode: %d", errno);
         }
 
         Connection* conn = connectionMap[sock];
@@ -278,7 +279,7 @@ inline void TcpListener::Receive(SOCKET sock)
             RequestBase* req = requestProducer->Produce(readState->packetBuf, &(conn->connId));
             if (req == nullptr)
             {
-                Kernel::LogError("[TcpListener] Create resquest failed. socket: %p.");
+                Logging::LogError("[TcpListener] Create resquest failed. socket: %p.");
                 ::close(sock);
                 break;
             }
@@ -338,7 +339,7 @@ void TcpListener::SendResponses()
                     if (result == SOCKET_ERROR)
                     {
                         // TODO: Process error conditions.
-                        Kernel::LogError("[TcpListener] Send failed. ErrorCode: %d", errno);
+                        Logging::LogError("[TcpListener] Send failed. ErrorCode: %d", errno);
                         break;
                     }
                     sentBytes += result;

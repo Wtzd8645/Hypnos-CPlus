@@ -18,7 +18,7 @@
 #include <Core/Runtime/Container.hpp>
 #include <Core/Runtime/Delegate.hpp>
 #include <Core/Runtime/Thread.hpp>
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"
 #include "RequestProducerBase.hpp"
@@ -30,7 +30,7 @@ namespace Hypnos {
 class SocketListenerBase
 {
 public:
-    SocketListenerBase(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase*>*>& requestHandlerMap) :
+    SocketListenerBase(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap) :
         maxConnections(config.maxConnections),
         maxPacketBytes(config.maxPacketBytes),
         requestProducer(config.requestProducer),
@@ -111,7 +111,7 @@ protected:
     Container::Vector<RequestBase*>* producerRequests;
     Container::Vector<RequestBase*>* consumerRequests;
     RequestProducerBase* requestProducer;
-    Container::UnorderedMap<uint16, Delegate<RequestBase*>*>& requestHandlerMap;
+    Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap;
 
     Thread* sendThread;
     Mutex responseLocker;

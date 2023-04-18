@@ -1,5 +1,5 @@
 #include <cstring>
-#include "../Kernel.hpp"
+#include <Foundation/Logging.hpp>
 #include "I18nTextManager.hpp"
 
 namespace Blanketmen {
@@ -29,12 +29,12 @@ void I18nTextManager::SwitchLanguage(const_char_ptr langName)
     i18nMmapPtr = reinterpret_cast<char_ptr>(::mmap(0, fdStat.st_size, PROT_READ, MAP_SHARED, dataFd, 0));
     if (i18nMmapPtr == MAP_FAILED)
     {
-        Kernel::Log("[I18nTextManager] Create mmap fail: %d", errno);
+        Logging::Log("[I18nTextManager] Create mmap fail: %d", errno);
         i18nMmapPtr = nullptr;
         return;
     }
 
-    Kernel::Log("[I18nTextManager] Create mmap successfully.");
+    Logging::Log("[I18nTextManager] Create mmap successfully.");
     currentLanguage = const_cast<char_ptr>(langName);
 }
 
