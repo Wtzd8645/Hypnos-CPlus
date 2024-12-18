@@ -89,7 +89,7 @@ UdpListener::~UdpListener()
         ::close(listenSocket);
     }
 
-    delete receiveBuf;
+    delete[] receiveBuf;
 
     if (requestProducer != nullptr)
     {
