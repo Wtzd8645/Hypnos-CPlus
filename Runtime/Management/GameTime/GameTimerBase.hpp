@@ -2,8 +2,8 @@
 #define GAME_TIMER_BASE_HPP_
 
 #include <memory>
-#include <Core/Runtime/Type.hpp>
-#include <Core/Runtime/Delegate.hpp>
+#include <Type.hpp>
+#include <Delegate.hpp>
 #include "GameTimeDefinition.hpp"
 #include "GameTimeManager.hpp"
 

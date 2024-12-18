@@ -2,7 +2,7 @@
 #define REQUEST_Producer_BASE_HPP_
 
 #include <mutex>
-#include <Core/Runtime/Type.hpp>
+#include <Type.hpp>
 #include "RequestBase.hpp"
 
 namespace Blanketmen {

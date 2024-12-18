@@ -15,9 +15,9 @@
 #include <sys/socket.h>
 #include <sys/unistd.h>
 #endif
-#include <Core/Runtime/Container.hpp>
-#include <Core/Runtime/Delegate.hpp>
-#include <Core/Runtime/Thread.hpp>
+#include <Container.hpp>
+#include <Delegate.hpp>
+#include <Thread.hpp>
 #include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"

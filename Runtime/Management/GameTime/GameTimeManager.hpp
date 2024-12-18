@@ -3,7 +3,7 @@
 
 #include <chrono>
 #include <memory>
-#include <Core/Runtime/Type.hpp>
+#include <Type.hpp>
 #include "GameTimeDefinition.hpp"
 
 namespace Blanketmen {

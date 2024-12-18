@@ -1,7 +1,5 @@
 project(Hypnos-Runtime)
 
-add_subdirectory("Core/Runtime")
-
 if (WIN32)
     set(PLATFORM_IMPL_FILES
         "Foundation/Logging_Win.cpp"
@@ -20,11 +18,12 @@ add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
 
 set_target_properties(Hypnos PROPERTIES LINKER_LANGUAGE CXX)
 
-add_dependencies(Hypnos Hypnos-Core-Runtime)
+add_dependencies(Hypnos Hypnos-Core)
 
+target_include_directories(Hypnos PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../Packages/Hypnos-Core/Runtime)
 target_include_directories(Hypnos PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if (UNIX)
     target_link_libraries(Hypnos PRIVATE pthread)
 endif ()
-target_link_libraries(Hypnos PUBLIC Hypnos-Core-Runtime)
+target_link_libraries(Hypnos PUBLIC Hypnos-Core)

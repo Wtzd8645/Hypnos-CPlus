@@ -2,7 +2,7 @@
 #define PACKET_READER_HPP_
 
 #include <cstring>
-#include <Core/Runtime/Encoding.hpp>
+#include <Encoding.hpp>
 #include "NetworkDefinition.hpp"
 
 namespace Blanketmen {

@@ -1,7 +1,7 @@
 #ifndef GAME_TIME_DEFINITION_HPP_
 #define GAME_TIME_DEFINITION_HPP_
 
-#include <Core/Runtime/Type.hpp>
+#include <Type.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

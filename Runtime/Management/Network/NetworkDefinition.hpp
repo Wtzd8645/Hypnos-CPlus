@@ -6,7 +6,7 @@
 #elif defined __linux__
 #include <netinet/in.h>
 #endif
-#include <Core/Runtime/Type.hpp>
+#include <Type.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

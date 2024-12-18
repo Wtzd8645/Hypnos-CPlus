@@ -21,5 +21,6 @@ else ()
     set(CMAKE_CXX_FLAGS_MINSIZEREL      "-Os -DNDEBUG")
 endif ()
 
+add_subdirectory("Packages/Hypnos-Core")
 add_subdirectory("Runtime")
 add_subdirectory("Tests")

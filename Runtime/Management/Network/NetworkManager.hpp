@@ -1,8 +1,8 @@
 ﻿#ifndef NETWORK_MANAGER_HPP_
 #define NETWORK_MANAGER_HPP_
 
-#include <Core/Runtime/Container.hpp>
-#include <Core/Runtime/Delegate.hpp>
+#include <Container.hpp>
+#include <Delegate.hpp>
 #include "NetworkConfig.hpp"
 #include "SocketListenerBase.hpp"
 
@@ -52,7 +52,7 @@ public:
     template<typename TObj>
     void Unregister(uint16 reqId, typename Delegate<RequestBase&>::ObjectFunction<TObj>::ObjectPtr objPtr, typename Delegate<RequestBase&>::ObjectFunction<TObj>::MethodPtr mtdPtr)
     {
-        Delegate<RequestBase*>* del = requestHandlerMap[reqId];
+        Delegate<RequestBase&>* del = requestHandlerMap[reqId];
         if (del != nullptr)
         {
             del->Remove<TObj>(objPtr, mtdPtr);
