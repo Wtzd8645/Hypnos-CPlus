@@ -21,11 +21,11 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     WSADATA wsaData;
     if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
-        Logging::LogError("[NetworkManager] WSAStartup failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::Error("[NetworkManager] WSAStartup failed. ErrorCode: %d", ::WSAGetLastError());
     }
     else
     {
-        Logging::Log("[NetworkManager] WSAStartup success.");
+        Logging::Info("[NetworkManager] WSAStartup success.");
     }
     addrinfo hints;
     ::memset(&hints, 0, sizeof(hints));
@@ -37,7 +37,7 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     addrinfo* addrInfo = nullptr;
     if (::getaddrinfo(NULL, DEFAULT_PORT, &hints, &addrInfo) != 0)
     {
-        Logging::LogError("[NetworkManager] getaddrinfo failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::Error("[NetworkManager] getaddrinfo failed. ErrorCode: %d", ::WSAGetLastError());
         return;
     }
 
@@ -45,7 +45,7 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     listenSocket = ::WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED); // 不是非阻塞套接字，但是重叠I/O套接字。
     if (listenSocket == INVALID_SOCKET)
     {
-        Logging::LogError("[NetworkManager] WSASocket failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::Error("[NetworkManager] WSASocket failed. ErrorCode: %d", ::WSAGetLastError());
         return;
     }
 
@@ -56,12 +56,12 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     // Show listen IP
     char ipAddr[INET_ADDRSTRLEN];
     ::inet_ntop(addrInfo->ai_family, addrInfo->ai_addr, ipAddr, sizeof(ipAddr));
-    Logging::Log("[NetworkManager] Bind IP: %s", ipAddr);
+    Logging::Info("[NetworkManager] Bind IP: %s", ipAddr);
 
     // Bind
     if (::bind(listenSocket, addrInfo->ai_addr, (int)addrInfo->ai_addrlen) == SOCKET_ERROR)
     {
-        Logging::LogError("[NetworkManager] Bind failed. ErrorCode: %ld", ::WSAGetLastError());
+        Logging::Error("[NetworkManager] Bind failed. ErrorCode: %ld", ::WSAGetLastError());
         ::closesocket(listenSocket);
     }
     ::freeaddrinfo(addrInfo);
@@ -98,7 +98,7 @@ inline void TcpListener::Listen()
 {
     if (::listen(listenSocket, SOMAXCONN) == SOCKET_ERROR)
     {
-        Logging::LogError("[NetworkManager] Listen failed. ErrorCode: %d", ::WSAGetLastError());
+        Logging::Error("[NetworkManager] Listen failed. ErrorCode: %d", ::WSAGetLastError());
         ::closesocket(listenSocket);
         return;
     }
@@ -114,7 +114,7 @@ inline void TcpListener::Listen()
         useThreadCount = 1;
     }
 
-    Logging::Log("[NetworkManager] Start listen. UseThreadCount: %d", useThreadCount);
+    Logging::Info("[NetworkManager] Start listen. UseThreadCount: %d", useThreadCount);
     for (int i = 0; i < useThreadCount; ++i)
     {
         iocpThreads.AddLast(new std::thread(&NetworkManager::ProcessEvents, this)); //_beginthreadex(NULL, 0, &NetworkManager::Process, (LPVOID)iocpHandle, 0, NULL);
@@ -148,7 +148,7 @@ void TcpListener::ProcessEvents()
         ::GetQueuedCompletionStatus(iocpHandle, &bytesTransferred, (PULONG_PTR)&client, (LPOVERLAPPED*)&iocpArgs, INFINITE);
         if (bytesTransferred == 0) // 連接結束
         {
-            Logging::Log("[NetworkManager] Socket closed: %p", client);
+            Logging::Info("[NetworkManager] Socket closed: %p", client);
             ::closesocket(client->socket);
             delete iocpArgs;
             continue;
@@ -160,7 +160,7 @@ void TcpListener::ProcessEvents()
             continue;
         }
 
-        Logging::Log("[NetworkManager] Receive: %d bytes", bytesTransferred);
+        Logging::Info("[NetworkManager] Receive: %d bytes", bytesTransferred);
         uint32 bytesProcessed = 0;
         while (bytesTransferred > 0)
         {
@@ -199,7 +199,7 @@ void TcpListener::ProcessEvents()
             uint8 seq = *reinterpret_cast<uint8_ptr>(dataBuf);
             if (seq != client->serialNumber)
             {
-                Logging::LogError("[NetworkManager] SerialNumber is not equal. Client: %p", client);
+                Logging::Error("[NetworkManager] SerialNumber is not equal. Client: %p", client);
                 ::closesocket(client->socket);
                 delete iocpArgs;
                 continue;
@@ -213,7 +213,7 @@ void TcpListener::ProcessEvents()
                 ::EnterCriticalSection(&requestLocker);
                 consumerRequests.AddLast(request);
                 ::LeaveCriticalSection(&requestLocker);
-                Logging::Log("[NetworkManager] Unpack message successfully. msgId: %d", request->header.msgId);
+                Logging::Info("[NetworkManager] Unpack message successfully. msgId: %d", request->header.msgId);
             }
         }
 
@@ -224,7 +224,7 @@ void TcpListener::ProcessEvents()
 
 void TcpListener::Accept()
 {
-    Logging::Log("[NetworkManager] Accept socket.");
+    Logging::Info("[NetworkManager] Accept socket.");
     sockaddr addr;
     int addrSize = sizeof(addr);
     while (true)
@@ -237,11 +237,11 @@ void TcpListener::Accept()
                 continue;
             }
 
-            Logging::LogError("[NetworkManager] Accept failed. ErrorCode: %d", ::WSAGetLastError());
+            Logging::Error("[NetworkManager] Accept failed. ErrorCode: %d", ::WSAGetLastError());
             continue;
         }
 
-        Logging::Log("[NetworkManager] Accept socket successfully.");
+        Logging::Info("[NetworkManager] Accept socket successfully.");
         Connection* client = new Connection();
         client->socket = acceptedSocket;
 
@@ -261,7 +261,7 @@ inline void TcpListener::Receive(Connection* client, IocpEventArgs* iocpArgs)
     // Complete immediately
     if (bytesRecvd != 0) // TODO: 立即完成還是會發I/O消息，不知道是否需要處理這情況
     {
-        Logging::LogWarning("[NetworkManager] Receive %d bytes immediately.", bytesRecvd);
+        Logging::InfoWarning("[NetworkManager] Receive %d bytes immediately.", bytesRecvd);
     }
 }
 

@@ -6,7 +6,7 @@ using namespace Blanketmen::Hypnos;
 
 int main()
 {
-    Logging::Log("1: Network");
+    Logging::Info("1: Network");
 
     int input;
     std::cin >> input;
