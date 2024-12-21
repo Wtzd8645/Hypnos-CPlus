@@ -19,13 +19,13 @@ class Logging
 {
 public:
 #if defined _WIN32
-    static void Log(_In_z_ _Printf_format_string_ const char* const format, ...);
-    static void LogWarning(_In_z_ _Printf_format_string_ const char* const format, ...);
-    static void LogError(_In_z_ _Printf_format_string_ const char* const format, ...);
+    static void Info(_In_z_ _Printf_format_string_ const char* const format, ...);
+    static void Warning(_In_z_ _Printf_format_string_ const char* const format, ...);
+    static void Error(_In_z_ _Printf_format_string_ const char* const format, ...);
 #elif defined __linux__
-    static void Log(const char* const format, ...);
-    static void LogWarning(const char* const format, ...);
-    static void LogError(const char* const format, ...);
+    static void Info(const char* const format, ...) noexcept;
+    static void Warning(const char* const format, ...) noexcept;
+    static void Error(const char* const format, ...) noexcept;
 #endif
 };
 

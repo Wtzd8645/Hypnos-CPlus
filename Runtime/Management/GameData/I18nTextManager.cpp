@@ -29,12 +29,12 @@ void I18nTextManager::SwitchLanguage(const_char_ptr langName)
     i18nMmapPtr = reinterpret_cast<char_ptr>(::mmap(0, fdStat.st_size, PROT_READ, MAP_SHARED, dataFd, 0));
     if (i18nMmapPtr == MAP_FAILED)
     {
-        Logging::Log("[I18nTextManager] Create mmap fail: %d", errno);
+        Logging::Info("[I18nTextManager] Create mmap fail: %d", errno);
         i18nMmapPtr = nullptr;
         return;
     }
 
-    Logging::Log("[I18nTextManager] Create mmap successfully.");
+    Logging::Info("[I18nTextManager] Create mmap successfully.");
     currentLanguage = const_cast<char_ptr>(langName);
 }
 

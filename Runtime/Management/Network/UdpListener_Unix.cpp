@@ -13,7 +13,7 @@ UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedM
     listenSocket = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (listenSocket == INVALID_SOCKET)
     {
-        Logging::LogError("[UdpListener] Create listen socket failed. ErrorCode: %d", errno);
+        Logging::Error("[UdpListener] Create listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -22,7 +22,7 @@ UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedM
     ((sockaddr_in*)&acceptedSockAddr)->sin_port = ::htons(DEFAULT_PORT);
     if (::bind(listenSocket, &acceptedSockAddr, sizeof(acceptedSockAddr)) == SOCKET_ERROR)
     {
-        Logging::LogError("[UdpListener] Bind adderss to listen socket failed. ErrorCode: %d", errno);
+        Logging::Error("[UdpListener] Bind adderss to listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -30,14 +30,14 @@ UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedM
     int opts = ::fcntl(listenSocket, F_GETFL);
     if (opts == SOCKET_ERROR)
     {
-        Logging::LogError("[UdpListener] Get flags from listen socket failed. ErrorCode: %d", errno);
+        Logging::Error("[UdpListener] Get flags from listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
     // Set the non-blocking flag to the socket file descriptor.
     if (::fcntl(listenSocket, F_SETFL, opts | O_NONBLOCK) == SOCKET_ERROR)
     {
-        Logging::LogError("[UdpListener] Set the non-blocking flag to the listen socket failed. ErrorCode: %d", errno);
+        Logging::Error("[UdpListener] Set the non-blocking flag to the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -45,7 +45,7 @@ UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedM
     epfd = ::epoll_create(maxConnections);
     if (epfd == INVALID_FD)
     {
-        Logging::LogError("[UdpListener] Create epoll from the listen socket failed. ErrorCode: %d", errno);
+        Logging::Error("[UdpListener] Create epoll from the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
 
@@ -54,14 +54,14 @@ UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedM
     epEvent.data.fd = listenSocket;
     if (::epoll_ctl(epfd, EPOLL_CTL_ADD, listenSocket, &epEvent))
     {
-        Logging::LogError("[UdpListener] Register the listen socket epoll event failed. ErrorCode: %d", errno);
+        Logging::Error("[UdpListener] Register the listen socket epoll event failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
     }
     epEventBuf = new epoll_event[maxConnections];
 
     char ip[INET6_ADDRSTRLEN];
     ::inet_ntop(AF_INET, &((sockaddr_in*)&acceptedSockAddr)->sin_addr, ip, INET_ADDRSTRLEN);
-    Logging::Log("[UdpListener] Create the listen socket success. Bind address: %s", ip);
+    Logging::Info("[UdpListener] Create the listen socket success. Bind address: %s", ip);
 }
 
 UdpListener::~UdpListener()
@@ -106,7 +106,7 @@ inline void UdpListener::Listen()
 {
     receiveThread = new Thread(&UdpListener::ProcessEvents, this);
     sendThread = new Thread(&UdpListener::SendResponses, this);
-    Logging::Log("[UdpListener] The server socket is listening.");
+    Logging::Info("[UdpListener] The server socket is listening.");
 }
 
 inline void UdpListener::Dispatch()
@@ -152,7 +152,7 @@ void UdpListener::ProcessEvents()
                 continue;
             }
 
-            Logging::Log("[UdpListener] Wait for epoll events failed. ErrorCode: %d", errorCode);
+            Logging::Info("[UdpListener] Wait for epoll events failed. ErrorCode: %d", errorCode);
             // TODO: Find an appropriate way to handle errors.
             continue;
         }
@@ -188,7 +188,7 @@ inline void UdpListener::Receive()
                 continue;
             }
 
-            Logging::Log("[UdpListener] Receive from the listen socket failed. ErrorCode: %d", errorCode);
+            Logging::Info("[UdpListener] Receive from the listen socket failed. ErrorCode: %d", errorCode);
             break;
         }
 
@@ -208,7 +208,7 @@ inline void UdpListener::Receive()
         // // TODO: Optimize packet process.
         // if (!requestProducer->Produce(receiveBuf + sizeof(PacketLengthSize), *connId))
         // {
-        //     Logging::LogError("[UdpListener] Create resquest failed.");
+        //     Logging::Error("[UdpListener] Create resquest failed.");
         //}
     }
 }
@@ -244,7 +244,7 @@ void UdpListener::SendResponses()
                     ssize_t result = ::sendto(listenSocket, sendBuf + sentBytes, packetBytes - sentBytes, 0, &(*connIt)->addr, addrLen);
                     if (result == SOCKET_ERROR)
                     {
-                        Logging::LogError("[UdpListener] Send failed. ErrorCode: %d", errno);
+                        Logging::Error("[UdpListener] Send failed. ErrorCode: %d", errno);
                         break;
                     }
                     sentBytes += result;
