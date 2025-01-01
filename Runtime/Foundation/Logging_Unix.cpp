@@ -1,4 +1,4 @@
-#include "Logging.hpp"
+#include "Hypnos/Logging.hpp"
 #include <cerrno>
 #include <cstdarg>
 #include <cstdio>

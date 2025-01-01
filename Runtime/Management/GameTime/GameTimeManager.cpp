@@ -1,7 +1,6 @@
+#include "Hypnos/GameTime/GameTimeManager.hpp"
+#include "Hypnos/GameTime/GameTimerBase.hpp"
 #include <thread>
-#include <Foundation/Logging.hpp>
-#include "GameTimeManager.hpp"
-#include "GameTimerBase.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

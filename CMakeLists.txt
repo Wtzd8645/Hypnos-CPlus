@@ -22,5 +22,30 @@ else ()
 endif ()
 
 add_subdirectory("Packages/Hypnos-Core")
-add_subdirectory("Runtime")
+
+if (WIN32)
+    set(PLATFORM_IMPL_FILES
+        "Runtime/Foundation/Logging_Win.cpp"
+        "Runtime/Management/Network/TcpListener_Win.cpp")
+elseif (UNIX)
+    set(PLATFORM_IMPL_FILES
+        "Runtime/Foundation/Logging_Unix.cpp"
+        "Runtime/Management/Network/TcpListener_Unix.cpp" "Runtime/Management/Network/UdpListener_Unix.cpp")
+endif ()
+
+add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
+    "Runtime/Management/Network/NetworkManager.cpp"
+    "Runtime/Management/GameData/GameDataManager.cpp" "Runtime/Management/GameData/I18nTextManager.cpp"
+    "Runtime/Management/GameState/GameStateManager.cpp"
+    "Runtime/Management/GameTime/GameTimeManager.cpp" "Runtime/Management/GameTime/CountdownTimer.cpp" "Runtime/Management/GameTime/LapTimer.cpp")
+
+set_target_properties(Hypnos PROPERTIES LINKER_LANGUAGE CXX)
+
+target_include_directories(Hypnos PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Include")
+
+target_link_libraries(Hypnos PUBLIC Hypnos-Core)
+if (UNIX)
+    target_link_libraries(Hypnos PRIVATE pthread)
+endif ()
+
 add_subdirectory("Tests")

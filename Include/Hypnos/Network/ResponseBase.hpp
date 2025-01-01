@@ -1,10 +1,9 @@
-#ifndef RESPONSE_BASE_HPP_
-#define RESPONSE_BASE_HPP_
+#pragma once
 
-#include <Container/Vector.hpp>
-#include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "PacketWriter.hpp"
+#include <Hypnos-Core/Container/Vector.hpp>
+#include <Hypnos/Logging.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -46,5 +45,3 @@ protected:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // RESPONSE_BASE_HPP_

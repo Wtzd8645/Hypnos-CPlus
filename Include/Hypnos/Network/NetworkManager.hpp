@@ -1,10 +1,9 @@
-﻿#ifndef NETWORK_MANAGER_HPP_
-#define NETWORK_MANAGER_HPP_
+﻿#pragma once
 
-#include <Container.hpp>
-#include <Delegate.hpp>
 #include "NetworkConfig.hpp"
 #include "SocketListenerBase.hpp"
+#include <Hypnos-Core/Container.hpp>
+#include <Hypnos-Core/Delegate.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -62,5 +61,3 @@ public:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // NETWORK_MANAGER_HPP_

@@ -1,9 +1,8 @@
-#ifndef REQUEST_BASE_HPP_
-#define REQUEST_BASE_HPP_
+#pragma once
 
-#include <Foundation/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "PacketReader.hpp"
+#include <Hypnos/Logging.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -33,5 +32,3 @@ protected:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // REQUEST_BASE_HPP_

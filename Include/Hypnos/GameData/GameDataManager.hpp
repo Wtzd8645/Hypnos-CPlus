@@ -1,5 +1,4 @@
-#ifndef GAME_DATA_MANAGER_HPP_
-#define GAME_DATA_MANAGER_HPP_
+#pragma once
 
 #if defined _WIN32
 
@@ -10,7 +9,7 @@
 #include <sys/stat.h>
 #endif
 
-#include <Type.hpp>
+#include <Hypnos-Core/Type.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -166,5 +165,3 @@ private:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // GAME_DATA_MANAGER_HPP_

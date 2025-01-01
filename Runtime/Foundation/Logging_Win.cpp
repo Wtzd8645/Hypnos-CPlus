@@ -1,6 +1,6 @@
+#include "Hypnos/Logging.hpp"
 #include <cstdarg>
 #include <cstdio>
-#include "Logging.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

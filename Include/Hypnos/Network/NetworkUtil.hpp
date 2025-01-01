@@ -1,5 +1,4 @@
-#ifndef NETWORK_UTIL_HPP_
-#define NETWORK_UTIL_HPP_
+#pragma once
 
 #if defined _WIN32
 
@@ -46,5 +45,3 @@ public:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // NETWORK_UTIL_HPP_

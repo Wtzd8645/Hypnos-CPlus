@@ -1,9 +1,8 @@
-#ifndef PACKET_READER_HPP_
-#define PACKET_READER_HPP_
+#pragma once
 
-#include <cstring>
-#include <Encoding.hpp>
 #include "NetworkDefinition.hpp"
+#include <Hypnos-Core/Encoding.hpp>
+#include <cstring>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -111,5 +110,3 @@ public:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // PACKET_READER_HPP_

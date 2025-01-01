@@ -1,5 +1,4 @@
-#ifndef NETWORK_HPP_
-#define NETWORK_HPP_
+#pragma once
 
 #include "Network/NetworkConfig.hpp"
 #include "Network/NetworkDefinition.hpp"
@@ -10,5 +9,3 @@
 #include "Network/RequestBase.hpp"
 #include "Network/RequestProducerBase.hpp"
 #include "Network/ResponseBase.hpp"
-
-#endif // NETWORK_HPP_

@@ -1,4 +1,4 @@
-#include "GameTimerBase.hpp"
+#include "Hypnos/GameTime/CountdownTimer.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

@@ -1,5 +1,4 @@
-#ifndef UDP_LISTENER_HPP_
-#define UDP_LISTENER_HPP_
+#pragma once
 
 #include "SocketListenerBase.hpp"
 
@@ -28,5 +27,3 @@ private:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // UDP_LISTENER_HPP_

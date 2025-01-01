@@ -1,8 +1,7 @@
 /* Auto-generated file */
-#ifndef ECHOMESSAGE_HPP_
-#define ECHOMESSAGE_HPP_
+#pragma once
 
-#include <Management/Network.hpp>
+#include <Hypnos/Network.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -165,5 +164,3 @@ protected:
 } // namespace Tests
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif //  ECHOMESSAGE_HPP_

@@ -1,12 +1,11 @@
-#ifndef NETWORK_DEFINITION_HPP_
-#define NETWORK_DEFINITION_HPP_
+#pragma once
 
 #if defined _WIN32
 
 #elif defined __linux__
 #include <netinet/in.h>
 #endif
-#include <Type.hpp>
+#include <Hypnos-Core/Type.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -83,5 +82,3 @@ struct std::hash<Blanketmen::Hypnos::ConnectionId>
         return std::hash<std::string>{ }(connId.addr.sa_data);
     }
 };
-
-#endif // NETWORK_DEFINITION_HPP_

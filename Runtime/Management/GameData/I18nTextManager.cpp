@@ -1,6 +1,6 @@
+#include "Hypnos/GameData/I18nTextManager.hpp"
+#include "Hypnos/Logging.hpp"
 #include <cstring>
-#include <Foundation/Logging.hpp>
-#include "I18nTextManager.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

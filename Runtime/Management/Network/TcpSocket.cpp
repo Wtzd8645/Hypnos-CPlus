@@ -1,8 +1,8 @@
-#include "TcpSocket.hpp"
+#include "Hypnos/Logging.hpp"
+#include "Hypnos/Network/TcpSocket.hpp"
 #include <cstring>
 #include <liburing.h>
 #include <stdexcept>
-#include <Foundation/Logging.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

@@ -1,9 +1,8 @@
-#ifndef REQUEST_Producer_BASE_HPP_
-#define REQUEST_Producer_BASE_HPP_
+#pragma once
 
-#include <mutex>
-#include <Type.hpp>
 #include "RequestBase.hpp"
+#include <Hypnos-Core/Type.hpp>
+#include <mutex>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -18,5 +17,3 @@ public:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // REQUEST_Producer_BASE_HPP_

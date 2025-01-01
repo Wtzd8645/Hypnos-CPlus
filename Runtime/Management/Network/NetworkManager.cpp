@@ -1,7 +1,6 @@
-﻿#include <Foundation/Logging.hpp>
-#include "TcpListener.hpp"
-#include "UdpListener.hpp"
-#include "NetworkManager.hpp"
+﻿#include "Hypnos/Network/NetworkManager.hpp"
+#include "Hypnos/Network/TcpListener.hpp"
+#include "Hypnos/Network/UdpListener.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

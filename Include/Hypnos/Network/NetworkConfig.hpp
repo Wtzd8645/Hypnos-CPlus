@@ -1,5 +1,4 @@
-#ifndef NETWORK_CONFIG_HPP_
-#define NETWORK_CONFIG_HPP_
+#pragma once
 
 #include "NetworkDefinition.hpp"
 #include "RequestProducerBase.hpp"
@@ -22,5 +21,3 @@ struct NetworkConfig
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // NETWORK_CONFIG_HPP_

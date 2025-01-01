@@ -1,5 +1,4 @@
-#ifndef SOCKET_LISTENER_BASE_HPP_
-#define SOCKET_LISTENER_BASE_HPP_
+#pragma once
 
 #if defined _WIN32
 #pragma comment(lib, "Ws2_32.lib")
@@ -15,10 +14,11 @@
 #include <sys/socket.h>
 #include <sys/unistd.h>
 #endif
-#include <Container.hpp>
-#include <Delegate.hpp>
-#include <Thread.hpp>
-#include <Foundation/Logging.hpp>
+
+#include <Hypnos-Core/Container.hpp>
+#include <Hypnos-Core/Delegate.hpp>
+#include <Hypnos-Core/Thread.hpp>
+#include <Hypnos/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"
 #include "RequestProducerBase.hpp"
@@ -123,5 +123,3 @@ protected:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // SOCKET_LISTENER_BASE_HPP_

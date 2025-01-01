@@ -1,10 +1,9 @@
-#ifndef LOGGING_HPP_
-#define LOGGING_HPP_
+#pragma once
 
 namespace Blanketmen {
 namespace Hypnos {
 
-constexpr const char* CONSOLE_LOG_STYLE_RESET = "\033[0;0m\n";
+constexpr const char* CONSOLE_LOG_STYLE_RESET          = "\033[0;0m\n";
 constexpr const char* CONSOLE_LOG_STYLE_REGULAR_NORMAL = "\033[0;0m";
 constexpr const char* CONSOLE_LOG_STYLE_REGULAR_BLACK  = "\033[0;30m";
 constexpr const char* CONSOLE_LOG_STYLE_REGULAR_RED    = "\033[0;31m";
@@ -31,5 +30,3 @@ public:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // LOGGING_HPP_

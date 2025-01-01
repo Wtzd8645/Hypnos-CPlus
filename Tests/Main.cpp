@@ -1,6 +1,6 @@
-#include <iostream>
-#include <Foundation/Logging.hpp>
 #include "Network/NetworkTest.hpp"
+#include <Hypnos/Logging.hpp>
+#include <iostream>
 
 using namespace Blanketmen::Hypnos;
 

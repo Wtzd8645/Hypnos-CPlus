@@ -1,5 +1,4 @@
-#ifndef GAME_STATE_MANAGER_HPP_
-#define GAME_STATE_MANAGER_HPP_
+#pragma once
 
 #include "GameStateBase.hpp"
 
@@ -36,5 +35,3 @@ private:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // GAME_STATE_MANAGER_HPP_

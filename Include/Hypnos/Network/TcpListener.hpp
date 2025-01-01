@@ -1,5 +1,4 @@
-#ifndef TCP_LISTENER_HPP_
-#define TCP_LISTENER_HPP_
+#pragma once
 
 #include "SocketListenerBase.hpp"
 
@@ -32,5 +31,3 @@ private:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // TCP_LISTENER_HPP_

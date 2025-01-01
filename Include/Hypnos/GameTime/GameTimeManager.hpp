@@ -1,10 +1,9 @@
-#ifndef GAME_TIME_MANAGER_HPP_
-#define GAME_TIME_MANAGER_HPP_
+#pragma once
 
+#include "GameTimeDefinition.hpp"
+#include <Hypnos-Core/Type.hpp>
 #include <chrono>
 #include <memory>
-#include <Type.hpp>
-#include "GameTimeDefinition.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -51,5 +50,3 @@ private:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // GAME_TIME_MANAGER_HPP_

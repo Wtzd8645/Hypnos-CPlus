@@ -1,7 +1,6 @@
-#ifndef NETWORK_TEST_HPP_
-#define NETWORK_TEST_HPP_
+#pragma once
 
-#include <Management/Network.hpp>
+#include <Hypnos/Network.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -43,5 +42,3 @@ void NetworkPasses()
 } // namespace Tests
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // NETWORK_TEST_HPP_

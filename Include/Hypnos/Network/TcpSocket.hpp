@@ -1,3 +1,5 @@
+#pragma once
+
 #include "SocketBase.hpp"
 #include <Thread.hpp>
 

@@ -1,5 +1,4 @@
-#ifndef GAME_STATE_BASE_HPP_
-#define GAME_STATE_BASE_HPP_
+#pragma once
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -16,5 +15,3 @@ public:
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-#endif // GAME_STATE_BASE_HPP_
