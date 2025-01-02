@@ -10,102 +10,102 @@ namespace Hypnos {
 class PacketWriter
 {
 public:
-    inline static void WriteInt8(SerializationState& state, int8 value)
+    inline static void WriteInt8(char_ptr buffer, int32& offset, int8 val)
     {
-        *reinterpret_cast<int8_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(int8);
+        *reinterpret_cast<int8_ptr>(buffer + offset) = val;
+        offset += sizeof(int8);
     }
 
-    inline static void WriteUInt8(SerializationState& state, uint8 value)
+    inline static void WriteUInt8(char_ptr buffer, int32& offset, uint8 val)
     {
-        *reinterpret_cast<uint8_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(uint8);
+        *reinterpret_cast<uint8_ptr>(buffer + offset) = val;
+        offset += sizeof(uint8);
     }
 
-    inline static void WriteInt16(SerializationState& state, int16 value)
+    inline static void WriteInt16(char_ptr buffer, int32& offset, int16 val)
     {
-        *reinterpret_cast<int16_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(int16);
+        *reinterpret_cast<int16_ptr>(buffer + offset) = val;
+        offset += sizeof(int16);
     }
 
-    inline static void WriteUInt16(SerializationState& state, uint16 value)
+    inline static void WriteUInt16(char_ptr buffer, int32& offset, uint16 val)
     {
-        *reinterpret_cast<uint16_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(uint16);
+        *reinterpret_cast<uint16_ptr>(buffer + offset) = val;
+        offset += sizeof(uint16);
     }
 
-    inline static void WriteInt32(SerializationState& state, int32 value)
+    inline static void WriteInt32(char_ptr buffer, int32& offset, int32 val)
     {
-        *reinterpret_cast<int32_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(int32);
+        *reinterpret_cast<int32_ptr>(buffer + offset) = val;
+        offset += sizeof(int32);
     }
 
-    inline static void WriteUInt32(SerializationState& state, uint32 value)
+    inline static void WriteUInt32(char_ptr buffer, int32& offset, uint32 val)
     {
-        *reinterpret_cast<uint32_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(uint32);
+        *reinterpret_cast<uint32_ptr>(buffer + offset) = val;
+        offset += sizeof(uint32);
     }
 
-    inline static void WriteVarint32(SerializationState& state, int32 value)
+    inline static void WriteVarint32(char_ptr buffer, int32& offset, int32 val)
     {
-        Encoding::Base128Varints::WriteUInt32(static_cast<uint32>(value), reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        Encoding::Base128Varints::WriteUInt32(static_cast<uint32>(val), reinterpret_cast<uint8_ptr>(buffer), offset);
     }
 
-    inline static void WriteUVarint32(SerializationState& state, uint32 value)
+    inline static void WriteUVarint32(char_ptr buffer, int32& offset, uint32 val)
     {
-        Encoding::Base128Varints::WriteUInt32(value, reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        Encoding::Base128Varints::WriteUInt32(val, reinterpret_cast<uint8_ptr>(buffer), offset);
     }
 
-    inline static void WriteSVarint32(SerializationState& state, int32 value)
+    inline static void WriteSVarint32(char_ptr buffer, int32& offset, int32 val)
     {
-        Encoding::Base128Varints::WriteUInt32(Encoding::ZigZag::Encode(value), reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        Encoding::Base128Varints::WriteUInt32(Encoding::ZigZag::Encode(val), reinterpret_cast<uint8_ptr>(buffer), offset);
     }
 
-    inline static void WriteInt64(SerializationState& state, int64 value)
+    inline static void WriteInt64(char_ptr buffer, int32& offset, int64 val)
     {
-        *reinterpret_cast<int64_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(int64);
+        *reinterpret_cast<int64_ptr>(buffer + offset) = val;
+        offset += sizeof(int64);
     }
 
-    inline static void WriteUInt64(SerializationState& state, uint64 value)
+    inline static void WriteUInt64(char_ptr buffer, int32& offset, uint64 val)
     {
-        *reinterpret_cast<uint64_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(uint64);
+        *reinterpret_cast<uint64_ptr>(buffer + offset) = val;
+        offset += sizeof(uint64);
     }
 
-    inline static void WriteVarint64(SerializationState& state, int64 value)
+    inline static void WriteVarint64(char_ptr buffer, int32& offset, int64 val)
     {
-        Encoding::Base128Varints::WriteUInt64(static_cast<uint64>(value), reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        Encoding::Base128Varints::WriteUInt64(static_cast<uint64>(val), reinterpret_cast<uint8_ptr>(buffer), offset);
     }
 
-    inline static void WriteUVarint64(SerializationState& state, uint64 value)
+    inline static void WriteUVarint64(char_ptr buffer, int32& offset, uint64 val)
     {
-        Encoding::Base128Varints::WriteUInt64(value, reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        Encoding::Base128Varints::WriteUInt64(val, reinterpret_cast<uint8_ptr>(buffer), offset);
     }
 
-    inline static void WriteSVarint64(SerializationState& state, int64 value)
+    inline static void WriteSVarint64(char_ptr buffer, int32& offset, int64 val)
     {
-        Encoding::Base128Varints::WriteUInt64(Encoding::ZigZag::Encode(value), reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        Encoding::Base128Varints::WriteUInt64(Encoding::ZigZag::Encode(val), reinterpret_cast<uint8_ptr>(buffer), offset);
     }
 
-    inline static void WriteFloat32(SerializationState& state, float32 value)
+    inline static void WriteFloat32(char_ptr buffer, int32& offset, float32 val)
     {
-        *reinterpret_cast<float32_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(float32);
+        *reinterpret_cast<float32_ptr>(buffer + offset) = val;
+        offset += sizeof(float32);
     }
 
-    inline static void WriteFloat64(SerializationState& state, float64 value)
+    inline static void WriteFloat64(char_ptr buffer, int32& offset, float64 val)
     {
-        *reinterpret_cast<float64_ptr>(state.buffer + state.offset) = value;
-        state.offset += sizeof(float64);
+        *reinterpret_cast<float64_ptr>(buffer + offset) = val;
+        offset += sizeof(float64);
     }
 
-    inline static void WriteString(SerializationState& state, string& value)
+    inline static void WriteString(char_ptr buffer, int32& offset, string& val)
     {
-        uint16 length = value.length();
-        Encoding::Base128Varints::WriteUInt32(length, reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
-        ::memcpy(state.buffer + state.offset, value.c_str(), length);
-        state.offset += length;
+        uint16 len = val.length();
+        Encoding::Base128Varints::WriteUInt32(len, reinterpret_cast<uint8_ptr>(buffer), offset);
+        memcpy(buffer + offset, val.c_str(), len);
+        offset += len;
     }
 };
 

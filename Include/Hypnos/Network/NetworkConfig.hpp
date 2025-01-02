@@ -1,7 +1,7 @@
 #pragma once
 
 #include "NetworkDefinition.hpp"
-#include "RequestProducerBase.hpp"
+#include "RequestFactoryBase.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -11,7 +11,7 @@ struct ConnectionListenerConfig
     TransportProtocol protocol;
     int32 maxConnections;
     int32 maxPacketBytes;
-    RequestProducerBase* requestProducer;
+    RequestFactoryBase* request_factory;
 };
 
 struct NetworkConfig

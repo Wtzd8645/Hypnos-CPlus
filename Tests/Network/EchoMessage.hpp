@@ -13,29 +13,29 @@ public:
     int32 a;
     Vector<string> b;
 
-    inline void WriteTo(SerializationState& state)
+    inline void WriteTo(PacketBuffer& buf)
     {
-        PacketWriter::WriteSVarint32(state, a);
+        PacketWriter::WriteSVarint32(buf, a);
         {
             int32 length = b.size();
-            PacketWriter::WriteVarint32(state, length);
+            PacketWriter::WriteVarint32(buf, length);
             for (int32 i = 0; i < length; ++i)
             {
-                PacketWriter::WriteString(state, b[i]);
+                PacketWriter::WriteString(buf, b[i]);
             }
         }
     }
 
-    inline void ReadFrom(SerializationState& state)
+    inline void ReadFrom(PacketBuffer& buf)
     {
-        PacketReader::ReadSVarint32(state, a);
+        PacketReader::ReadSVarint32(buf, a);
         {
             int32 length;
-            PacketReader::ReadVarint32(state, length);
+            PacketReader::ReadVarint32(buf, length);
             b.resize(length);
             for (int32 i = 0; i < length; ++i)
             {
-                PacketReader::ReadString(state, b[i]);
+                PacketReader::ReadString(buf, b[i]);
             }
         }
     }
@@ -46,14 +46,14 @@ struct EchoStruct2
 public:
     EchoStruct1 b;
 
-    inline void WriteTo(SerializationState& state)
+    inline void WriteTo(PacketBuffer& buf)
     {
-        b.WriteTo(state);
+        b.WriteTo(buf);
     }
 
-    inline void ReadFrom(SerializationState& state)
+    inline void ReadFrom(PacketBuffer& buf)
     {
-        b.ReadFrom(state);
+        b.ReadFrom(buf);
     }
 };
 
@@ -80,30 +80,30 @@ public:
 protected:
     void UnpackBody() override
     {
-        PacketReader::ReadInt64(state, a);
-        PacketReader::ReadVarint32(state, b);
-        PacketReader::ReadSVarint64(state, c);
-        PacketReader::ReadUVarint32(state, d);
+        PacketReader::ReadInt64(buffer, a);
+        PacketReader::ReadVarint32(buffer, b);
+        PacketReader::ReadSVarint64(buffer, c);
+        PacketReader::ReadUVarint32(buffer, d);
         {
             int32 length;
-            PacketReader::ReadVarint32(state, length);
+            PacketReader::ReadVarint32(buffer, length);
             e.resize(length);
             for (int32 i = 0; i < length; ++i)
             {
-                e[i].ReadFrom(state);
+                e[i].ReadFrom(buffer);
             }
         }
-        PacketReader::ReadFloat32(state, f);
-        PacketReader::ReadUInt8(state, g);
-        PacketReader::ReadString(state, h);
-        PacketReader::ReadInt8(state, i);
-        PacketReader::ReadFloat64(state, j);
-        PacketReader::ReadVarint64(state, k);
-        PacketReader::ReadSVarint32(state, l);
-        m.ReadFrom(state);
-        PacketReader::ReadUVarint64(state, n);
-        PacketReader::ReadInt16(state, o);
-        PacketReader::ReadUInt64(state, p);
+        PacketReader::ReadFloat32(buffer, f);
+        PacketReader::ReadUInt8(buffer, g);
+        PacketReader::ReadString(buffer, h);
+        PacketReader::ReadInt8(buffer, i);
+        PacketReader::ReadFloat64(buffer, j);
+        PacketReader::ReadVarint64(buffer, k);
+        PacketReader::ReadSVarint32(buffer, l);
+        m.ReadFrom(buffer);
+        PacketReader::ReadUVarint64(buffer, n);
+        PacketReader::ReadInt16(buffer, o);
+        PacketReader::ReadUInt64(buffer, p);
     }
 };
 
@@ -135,29 +135,29 @@ public:
 protected:
     void PackBody() override
     {
-        PacketWriter::WriteInt64(state, a);
-        PacketWriter::WriteVarint32(state, b);
-        PacketWriter::WriteSVarint64(state, c);
-        PacketWriter::WriteUVarint32(state, d);
+        PacketWriter::WriteInt64(buffer, a);
+        PacketWriter::WriteVarint32(buffer, b);
+        PacketWriter::WriteSVarint64(buffer, c);
+        PacketWriter::WriteUVarint32(buffer, d);
         {
             int32 length = e.size();
-            PacketWriter::WriteVarint32(state, length);
+            PacketWriter::WriteVarint32(buffer, length);
             for (int32 i = 0; i < length; ++i)
             {
-                e[i].WriteTo(state);
+                e[i].WriteTo(buffer);
             }
         }
-        PacketWriter::WriteFloat32(state, f);
-        PacketWriter::WriteUInt8(state, g);
-        PacketWriter::WriteString(state, h);
-        PacketWriter::WriteInt8(state, i);
-        PacketWriter::WriteFloat64(state, j);
-        PacketWriter::WriteVarint64(state, k);
-        PacketWriter::WriteSVarint32(state, l);
-        m.WriteTo(state);
-        PacketWriter::WriteUVarint64(state, n);
-        PacketWriter::WriteInt16(state, o);
-        PacketWriter::WriteUInt64(state, p);
+        PacketWriter::WriteFloat32(buffer, f);
+        PacketWriter::WriteUInt8(buffer, g);
+        PacketWriter::WriteString(buffer, h);
+        PacketWriter::WriteInt8(buffer, i);
+        PacketWriter::WriteFloat64(buffer, j);
+        PacketWriter::WriteVarint64(buffer, k);
+        PacketWriter::WriteSVarint32(buffer, l);
+        m.WriteTo(buffer);
+        PacketWriter::WriteUVarint64(buffer, n);
+        PacketWriter::WriteInt16(buffer, o);
+        PacketWriter::WriteUInt64(buffer, p);
     }
 };
 

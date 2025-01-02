@@ -2,14 +2,15 @@
 
 #include "NetworkConfig.hpp"
 #include "NetworkDefinition.hpp"
-#include "SocketListenerBase.hpp"
+#include "SocketServerBase.hpp"
 #include <Hypnos-Core/Container.hpp>
+#include <Hypnos-Core/Threads/MPSC/RingBuffer.hpp>
 #include <Hypnos-Core/Mediation.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
 
-class NetworkManager : public EventDispatcher<uint16, uint16>
+class NetworkManager
 {
 public:
     inline static NetworkManager& Instance() noexcept
@@ -21,45 +22,39 @@ public:
 private:
     NetworkManager() { }
     NetworkManager(NetworkManager const&) = delete;
-    ~NetworkManager() override { }
-
-    void operator=(NetworkManager const&) = delete;
+    ~NetworkManager() { Release(); }
 
 public:
     void Initialize(NetworkConfig* config);
     void Release();
-    inline void Listen() { socketListener->Listen(); }
-    inline void Dispatch() { socketListener->Dispatch(); }
-    inline void Send(ResponseBase* response) { socketListener->Send(response); }
+    void Listen(SocketId sockId);
+    void Shutdown(SocketId sockId);
 
-    template<typename TObj>
-    void Register(uint16 reqId, typename Delegate<RequestBase&>::ObjectFunction<TObj>::ObjectPtr objPtr, typename Delegate<RequestBase&>::ObjectFunction<TObj>::MethodPtr mtdPtr)
+    inline void Update()
     {
-        Delegate<RequestBase&>* del = requestHandlerMap[reqId];
-        if (del == nullptr)
+        for (auto& server : servers)
         {
-            del = new Delegate<RequestBase&>(); // TODO: Delete this delegate.
-            requestHandlerMap[reqId] = del;
-        }
-        else
-        {
-            del->Add<TObj>(objPtr, mtdPtr);
+            server->Dispatch();
         }
     }
 
-    template<typename TObj>
-    void Unregister(uint16 reqId, typename Delegate<RequestBase&>::ObjectFunction<TObj>::ObjectPtr objPtr, typename Delegate<RequestBase&>::ObjectFunction<TObj>::MethodPtr mtdPtr)
+    inline void Send(SocketId sockId, ResponseBase* resp)
     {
-        Delegate<RequestBase&>* del = requestHandlerMap[reqId];
-        if (del != nullptr)
-        {
-            del->Remove<TObj>(objPtr, mtdPtr);
-        }
+        servers[sockId]->Send(resp);
+    }
+
+    inline void Register(SocketId sockId, RequestId msgId, EventHandler<RequestBase*>* handler)
+    {
+        servers[sockId]->Register(msgId, handler);
+    }
+
+    inline void Unregister(SocketId sockId, RequestId msgId)
+    {
+        servers[sockId]->Unregister(msgId);
     }
 
 private:
-    SocketListenerBase* socketListener;
-    Container::UnorderedMap<uint16, Delegate<RequestBase&>*> requestHandlerMap;
+    Container::Vector<SocketServerBase*> servers;
 };
 
 } // namespace Hypnos

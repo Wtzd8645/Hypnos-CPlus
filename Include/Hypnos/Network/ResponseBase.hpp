@@ -11,33 +11,34 @@ namespace Hypnos {
 class ResponseBase
 {
 public:
-    virtual ~ResponseBase() { }
+    virtual ~ResponseBase() = 0;
 
-    Container::Vector<ConnectionId*> connIds;
-    
+    Container::Vector<Connection*> conns;
+    char_ptr buffer;
+    int32 offset;
+
     PacketLengthSize Pack(PacketBuffer& src)
     {
-        state.buffer = src.final + src.offset;
-        state.offset = sizeof(PacketLengthSize);
+        buffer = src.data + src.offset;
+        offset = sizeof(PacketLengthSize);
 
         PackHeader();
         PackBody();
 
         // TODO: Compress
         // TODO: Encrypt
-        PacketLengthSize length = state.offset;
-        state.offset = 0;
-        PacketWriter::WriteInt16(state, length - sizeof(PacketLengthSize));
-        return length;
+        PacketLengthSize len = offset;
+        offset = 0;
+        PacketWriter::WriteInt16(buffer, offset, len - sizeof(PacketLengthSize));
+        return len;
     }
 
 protected:
-    SerializationState state;
     MessageHeader header;
 
     inline void PackHeader()
     {
-        PacketWriter::WriteUInt16(state, header.msgId);
+        PacketWriter::WriteUInt16(buffer, offset, header.msgId);
     }
 
     virtual void PackBody() = 0;

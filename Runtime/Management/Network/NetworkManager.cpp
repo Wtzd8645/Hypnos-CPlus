@@ -11,12 +11,12 @@ void NetworkManager::Initialize(NetworkConfig* config)
     {
         case TransportProtocol::TCP:
         {
-            socketListener = new TcpListener(config->listenerCfg, requestHandlerMap);
+            //socketListener = new TcpListener(config->listenerCfg, requestHandlerMap);
             break;
         }
         case TransportProtocol::UDP :
         {
-            socketListener = new UdpListener(config->listenerCfg, requestHandlerMap);
+            //socketListener = new UdpListener(config->listenerCfg, requestHandlerMap);
             break;
         }
         default:
@@ -28,7 +28,17 @@ void NetworkManager::Initialize(NetworkConfig* config)
 
 void NetworkManager::Release()
 {
-    delete socketListener;
+    //delete socketListener;
+}
+
+void NetworkManager::Listen(SocketId sockId)
+{
+    servers[sockId]->Listen();
+}
+
+void NetworkManager::Shutdown(SocketId sockId)
+{
+    servers[sockId]->Release();
 }
 
 } // namespace Hypnos

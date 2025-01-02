@@ -12,20 +12,21 @@ class RequestBase
 public:
     virtual ~RequestBase() { }
 
-    ConnectionId* connId;
+    Connection* conn;
     MessageHeader header;
 
-    void Unpack(PacketBuffer& src)
+    void Unpack(char_ptr buf)
     {
         // TODO: Decrypt
         // TODO: Decompress
-        state.buffer = src.final + src.offset;
-        state.offset = 0;
+        buffer = buf;
+        offset = 0;
         UnpackBody();
     }
 
 protected:
-    SerializationState state;
+    char_ptr buffer;
+    int32 offset;
 
     virtual void UnpackBody() = 0;
 };
