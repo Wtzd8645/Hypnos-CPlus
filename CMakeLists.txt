@@ -30,7 +30,7 @@ if (WIN32)
 elseif (UNIX)
     set(PLATFORM_IMPL_FILES
         "Runtime/Foundation/Logging_Unix.cpp"
-        "Runtime/Management/Network/TcpListener_Unix.cpp" "Runtime/Management/Network/UdpListener_Unix.cpp")
+        "Runtime/Management/Network/NetworkUtils_Unix.cpp" "Runtime/Management/Network/TcpListener_Unix.cpp" "Runtime/Management/Network/UdpListener_Unix.cpp")
 endif ()
 
 add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}

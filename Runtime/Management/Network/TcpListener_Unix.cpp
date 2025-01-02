@@ -1,5 +1,5 @@
 #include "Hypnos/Logging.hpp"
-#include "Hypnos/Network/NetworkUtil.hpp"
+#include "Hypnos/Network/NetworkUtils.hpp"
 #include "Hypnos/Network/TcpListener.hpp"
 
 namespace Blanketmen {
@@ -17,7 +17,7 @@ TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedM
     }
 
     // Bind
-    NetworkUtil::GetLocalAddress(AF_INET, &acceptedSockAddr);
+    NetworkUtils::GetLocalAddress(AF_INET, &acceptedSockAddr);
     ((sockaddr_in*)&acceptedSockAddr)->sin_port = ::htons(DEFAULT_PORT);
     if (::bind(listenSocket, &acceptedSockAddr, sizeof(acceptedSockAddr)) == SOCKET_ERROR)
     {
