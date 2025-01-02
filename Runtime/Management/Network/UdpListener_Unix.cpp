@@ -11,7 +11,7 @@ UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedM
 {
     // Create socket.
     listenSocket = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (listenSocket == INVALID_SOCKET)
+    if (listenSocket == INVALID_FD)
     {
         Logging::Error("[UdpListener] Create listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
@@ -84,7 +84,7 @@ UdpListener::~UdpListener()
     }
     delete[] epEventBuf;
 
-    if (listenSocket != INVALID_SOCKET)
+    if (listenSocket != INVALID_FD)
     {
         ::close(listenSocket);
     }
@@ -140,7 +140,7 @@ inline void UdpListener::Send(ResponseBase* response)
 void UdpListener::ProcessEvents()
 {
     int evtNum = 0;
-    SOCKET sock = 0;
+    Socket sock = 0;
     while (true)
     {
         evtNum = ::epoll_wait(epfd, epEventBuf, maxConnections, -1);
@@ -218,7 +218,7 @@ void UdpListener::SendResponses()
     char sendBuf[maxPacketBytes * 16];
     char compressBuf[maxPacketBytes];
     char encryptBuf[maxPacketBytes];
-    PacketBuffer packetBuf{ 0, sendBuf, compressBuf, encryptBuf };
+    PacketBuffer buffer{ sendBuf, 0 };
     int32 addrLen = sizeof(sockaddr);
     UniqueLock<Mutex> lock(responseLocker, std::defer_lock);
 
@@ -235,13 +235,13 @@ void UdpListener::SendResponses()
         for (auto respIt = consumerResponses->begin(); respIt != consumerResponses->end(); ++respIt)
         {
             ResponseBase* resp = *respIt;
-            int32 packetBytes = (*respIt)->Pack(packetBuf);
-            for (auto connIt = resp->connIds.begin(); connIt != resp->connIds.end(); ++connIt)
+            int32 packetBytes = (*respIt)->Pack(buffer);
+            for (auto connIt = resp->conns.begin(); connIt != resp->conns.end(); ++connIt)
             {
                 int32 sentBytes = 0;
                 while (sentBytes < packetBytes) // TODO: Is UDP need to do while send?
                 {
-                    ssize_t result = ::sendto(listenSocket, sendBuf + sentBytes, packetBytes - sentBytes, 0, &(*connIt)->addr, addrLen);
+                    ssize_t result = ::sendto(listenSocket, sendBuf + sentBytes, packetBytes - sentBytes, 0, reinterpret_cast<sockaddr*>(&(*connIt)->addr), addrLen);
                     if (result == SOCKET_ERROR)
                     {
                         Logging::Error("[UdpListener] Send failed. ErrorCode: %d", errno);

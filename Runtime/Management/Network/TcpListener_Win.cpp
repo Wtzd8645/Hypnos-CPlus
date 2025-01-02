@@ -229,7 +229,7 @@ void TcpListener::Accept()
     int addrSize = sizeof(addr);
     while (true)
     {
-        SOCKET acceptedSocket = ::accept(listenSocket, &addr, &addrSize);
+        Socket acceptedSocket = ::accept(listenSocket, &addr, &addrSize);
         if (acceptedSocket == INVALID_SOCKET)
         {
             if (::WSAGetLastError() == WSAEWOULDBLOCK)

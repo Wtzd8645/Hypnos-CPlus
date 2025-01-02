@@ -10,7 +10,7 @@ TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedM
 {
     // Create socket.
     listenSocket = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (listenSocket == INVALID_SOCKET)
+    if (listenSocket == INVALID_FD)
     {
         Logging::Error("[TcpListener] Create the listen socket failed. ErrorCode: %d", errno);
         ::exit(EXIT_FAILURE);
@@ -83,7 +83,7 @@ TcpListener::~TcpListener()
     }
     delete[] epEventBuf;
 
-    if (listenSocket != INVALID_SOCKET)
+    if (listenSocket != INVALID_FD)
     {
         ::close(listenSocket);
     }
@@ -144,7 +144,7 @@ inline void TcpListener::Send(ResponseBase* response)
 void TcpListener::ProcessEvents()
 {
     int evtNum = 0;
-    SOCKET sock = 0;
+    Socket sock = 0;
     while (true)
     {
         evtNum = ::epoll_wait(epfd, epEventBuf, maxConnections, -1);
@@ -182,7 +182,7 @@ inline void TcpListener::Accept()
 {
     while (true)
     {
-        SOCKET sock = ::accept(listenSocket, &acceptedSockAddr, &acceptedSockAddrLen);
+        Socket sock = ::accept(listenSocket, &acceptedSockAddr, &acceptedSockAddrLen);
         if (sock == SOCKET_ERROR)
         {
             int errorCode = errno;
@@ -219,27 +219,25 @@ inline void TcpListener::Accept()
         if (conn == nullptr)
         {
             conn = new Connection();
-            conn->readState.packetBuf.final = new char[maxPacketBytes * 4];
-            conn->readState.packetBuf.compress = new char[maxPacketBytes];
-            conn->readState.packetBuf.encrypt = new char[maxPacketBytes];
+            conn->recvCtx.buffer.data = new char[maxPacketBytes * 4];
             connectionMap[sock] = conn;
         }
-        conn->connId.sock = sock;
-        conn->connId.addr = acceptedSockAddr;
-        conn->readState.isWaitingPacketSize = true;
-        conn->readState.waitingBytes = sizeof(PacketLengthSize);
-        conn->readState.pendingBytes = 0;
-        conn->readState.processedBytes = 0;
+        conn->sock = sock;
+        ::memcpy(&conn->addr, &acceptedSockAddr, sizeof(sockaddr));
+        conn->recvCtx.isWaitingSize = true; 
+        conn->recvCtx.waitingBytes = sizeof(PacketLengthSize);
+        conn->recvCtx.pendingBytes = 0;
+        conn->recvCtx.processedBytes = 0;
     }
 }
 
-inline void TcpListener::Receive(SOCKET sock)
+inline void TcpListener::Receive(Socket sock)
 {
     Connection* conn = connectionMap[sock];
-    PacketReadState* readState = &conn->readState;
+    PacketContext* ctx = &conn->recvCtx;
     while (true)
     {
-        ssize_t transferredBytes = ::recv(sock, readState->packetBuf.final + readState->pendingBytes, maxPacketBytes - readState->pendingBytes, 0);
+        ssize_t transferredBytes = ::recv(sock, ctx->buffer.data + ctx->pendingBytes, maxPacketBytes - ctx->pendingBytes, 0);
         if (transferredBytes < 0)
         {
             int errorCode = errno;
@@ -263,20 +261,20 @@ inline void TcpListener::Receive(SOCKET sock)
             break;
         }
 
-        readState->pendingBytes += transferredBytes;
-        while (readState->pendingBytes >= readState->waitingBytes)
+        ctx->pendingBytes += transferredBytes;
+        while (ctx->pendingBytes >= ctx->waitingBytes)
         {
-            if (readState->isWaitingPacketSize)
+            if (ctx->isWaitingSize)
             {
-                readState->isWaitingPacketSize = false;
-                readState->waitingBytes = *reinterpret_cast<PacketLengthSize*>(readState->packetBuf.final + readState->processedBytes);
-                readState->pendingBytes -= sizeof(PacketLengthSize);
-                readState->processedBytes += sizeof(PacketLengthSize);
+                ctx->isWaitingSize = false;
+                ctx->waitingBytes = *reinterpret_cast<PacketLengthSize*>(ctx->buffer.data + ctx->processedBytes);
+                ctx->pendingBytes -= sizeof(PacketLengthSize);
+                ctx->processedBytes += sizeof(PacketLengthSize);
                 continue;
             }
 
-            readState->packetBuf.offset = readState->processedBytes;
-            RequestBase* req = requestProducer->Produce(readState->packetBuf, &(conn->connId));
+            ctx->buffer.offset = ctx->processedBytes;
+            RequestBase* req = requestProducer->Produce(ctx->buffer, conn);
             if (req == nullptr)
             {
                 Logging::Error("[TcpListener] Create resquest failed. socket: %p.");
@@ -287,18 +285,18 @@ inline void TcpListener::Receive(SOCKET sock)
             producerRequests->push_back(req);
             requestLocker.unlock();
 
-            readState->pendingBytes -= readState->waitingBytes;
-            readState->processedBytes += readState->waitingBytes;
-            readState->isWaitingPacketSize = true;
-            readState->waitingBytes = sizeof(PacketLengthSize);
+            ctx->pendingBytes -= ctx->waitingBytes;
+            ctx->processedBytes += ctx->waitingBytes;
+            ctx->isWaitingSize = true;
+            ctx->waitingBytes = sizeof(PacketLengthSize);
         }
 
-        if (readState->pendingBytes > 0)
+        if (ctx->pendingBytes > 0)
         {
             // TODO: Make sure an overlapping array don't cause problems.
-            ::memcpy(readState->packetBuf.final, readState->packetBuf.final + readState->processedBytes, readState->pendingBytes);
+            ::memcpy(ctx->buffer.data, ctx->buffer.data + ctx->processedBytes, ctx->pendingBytes);
         }
-        readState->processedBytes = 0;
+        ctx->processedBytes = 0;
     }
 }
 
@@ -307,7 +305,7 @@ void TcpListener::SendResponses()
     char sendBuf[maxPacketBytes * 16];
     char compressBuf[maxPacketBytes];
     char encryptBuf[maxPacketBytes];
-    PacketBuffer packetBuf{ 0, sendBuf, compressBuf, encryptBuf };
+    PacketBuffer buffer{ sendBuf, 0 };
     UniqueLock<Mutex> uniqueLock(responseLocker, std::defer_lock);
 
     while (true)
@@ -326,10 +324,10 @@ void TcpListener::SendResponses()
 
         for (auto respIt = consumerResponses->begin(); respIt != consumerResponses->end(); ++respIt)
         {
-            packetBuf.offset = 0;
+            buffer.offset = 0;
             ResponseBase& resp = **respIt;
-            int32 pendingBytes = resp.Pack(packetBuf);
-            for (auto connIt = resp.connIds.begin(); connIt != resp.connIds.end(); ++connIt)
+            int32 pendingBytes = resp.Pack(buffer);
+            for (auto connIt = resp.conns.begin(); connIt != resp.conns.end(); ++connIt)
             {
                 int32 sentBytes = 0;
                 while (sentBytes < pendingBytes)

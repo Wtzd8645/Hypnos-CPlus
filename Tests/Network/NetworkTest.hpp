@@ -9,10 +9,10 @@ namespace Tests {
 class RequestProducer : public RequestProducerBase
 {
 public:
-    RequestBase* Produce(PacketBuffer& source, ConnectionId* connId) override
+    RequestBase* Produce(PacketBuffer& src, Connection* conn) override
     {
-        uint16 msgId = *reinterpret_cast<uint16_ptr>(source.final + source.offset);
-        source.offset += +sizeof(msgId);
+        uint16 msgId = *reinterpret_cast<uint16_ptr>(src.data + src.offset);
+        src.offset += +sizeof(msgId);
         RequestBase* request;
         switch (msgId)
         {
@@ -22,9 +22,9 @@ public:
             default: return nullptr;
         }
 
-        request->connId = connId;
+        request->conn = conn;
         request->header.msgId = msgId;
-        request->Unpack(source);
+        request->Unpack(src);
         return request;
     }
 };

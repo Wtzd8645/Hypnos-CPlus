@@ -12,7 +12,7 @@ class RequestProducerBase
 public:
     virtual ~RequestProducerBase() { }
 
-    virtual RequestBase* Produce(PacketBuffer& source, ConnectionId* connId) = 0;
+    virtual RequestBase* Produce(PacketBuffer& src, Connection* conn) = 0;
 };
 
 } // namespace Hypnos

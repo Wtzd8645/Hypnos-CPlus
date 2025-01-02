@@ -118,7 +118,7 @@ void TcpSocket::ProcessEvents()
             // ¦^Εγ®ψ®§
             Client* client = new Client{ client_fd };
             struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
-            io_uring_prep_recv(sqe, client_fd, client->buffer, BUFFER_SIZE, 0);
+            io_uring_prep_recv(sqe, client_fd, client->data, BUFFER_SIZE, 0);
             io_uring_sqe_set_data(sqe, client);
             io_uring_submit(&ring);
         }
@@ -139,7 +139,7 @@ void TcpSocket::ProcessEvents()
 
                 // Echo back the message
                 struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
-                io_uring_prep_send(sqe, client->fd, client->buffer, cqe->res, 0);
+                io_uring_prep_send(sqe, client->fd, client->data, cqe->res, 0);
                 io_uring_sqe_set_data(sqe, client);
                 io_uring_submit(&ring);
             }

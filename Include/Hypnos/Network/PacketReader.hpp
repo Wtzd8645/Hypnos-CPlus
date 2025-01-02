@@ -10,101 +10,101 @@ namespace Hypnos {
 class PacketReader
 {
 public:
-    inline static void ReadInt8(SerializationState& state, int8& result)
+    inline static void ReadInt8(PacketBuffer& buf, int8& result)
     {
-        result = *reinterpret_cast<int8_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(int8);
+        result = *reinterpret_cast<int8_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(int8);
     }
 
-    inline static void ReadUInt8(SerializationState& state, uint8& result)
+    inline static void ReadUInt8(PacketBuffer& buf, uint8& result)
     {
-        result = *reinterpret_cast<uint8_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(uint8);
+        result = *reinterpret_cast<uint8_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(uint8);
     }
 
-    inline static void ReadInt16(SerializationState& state, int16& result)
+    inline static void ReadInt16(PacketBuffer& buf, int16& result)
     {
-        result = *reinterpret_cast<int16_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(int16);
+        result = *reinterpret_cast<int16_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(int16);
     }
 
-    inline static void ReadUInt16(SerializationState& state, uint16& result)
+    inline static void ReadUInt16(PacketBuffer& buf, uint16& result)
     {
-        result = *reinterpret_cast<uint16_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(uint16);
+        result = *reinterpret_cast<uint16_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(uint16);
     }
 
-    inline static void ReadInt32(SerializationState& state, int32& result)
+    inline static void ReadInt32(PacketBuffer& buf, int32& result)
     {
-        result = *reinterpret_cast<int32_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(int32);
+        result = *reinterpret_cast<int32_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(int32);
     }
 
-    inline static void ReadUInt32(SerializationState& state, uint32& result)
+    inline static void ReadUInt32(PacketBuffer& buf, uint32& result)
     {
-        result = *reinterpret_cast<uint32_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(uint32);
+        result = *reinterpret_cast<uint32_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(uint32);
     }
 
-    inline static void ReadVarint32(SerializationState& state, int32& result)
+    inline static void ReadVarint32(PacketBuffer& buf, int32& result)
     {
-        result = static_cast<int32>(Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(state.buffer), state.offset));
+        result = static_cast<int32>(Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(buf.data), buf.offset));
     }
 
-    inline static void ReadUVarint32(SerializationState& state, uint32& result)
+    inline static void ReadUVarint32(PacketBuffer& buf, uint32& result)
     {
-        result = Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        result = Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(buf.data), buf.offset);
     }
 
-    inline static void ReadSVarint32(SerializationState& state, int32& result)
+    inline static void ReadSVarint32(PacketBuffer& buf, int32& result)
     {
-        result = Encoding::ZigZag::Decode(Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(state.buffer), state.offset));
+        result = Encoding::ZigZag::Decode(Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(buf.data), buf.offset));
     }
 
-    inline static void ReadInt64(SerializationState& state, int64& result)
+    inline static void ReadInt64(PacketBuffer& buf, int64& result)
     {
-        result = *reinterpret_cast<int64_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(int64);
+        result = *reinterpret_cast<int64_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(int64);
     }
 
-    inline static void ReadUInt64(SerializationState& state, uint64& result)
+    inline static void ReadUInt64(PacketBuffer& buf, uint64& result)
     {
-        result = *reinterpret_cast<uint64_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(uint64);
+        result = *reinterpret_cast<uint64_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(uint64);
     }
 
-    inline static void ReadVarint64(SerializationState& state, int64& result)
+    inline static void ReadVarint64(PacketBuffer& buf, int64& result)
     {
-        result = static_cast<int64>(Encoding::Base128Varints::ReadUInt64(reinterpret_cast<uint8_ptr>(state.buffer), state.offset));
+        result = static_cast<int64>(Encoding::Base128Varints::ReadUInt64(reinterpret_cast<uint8_ptr>(buf.data), buf.offset));
     }
 
-    inline static void ReadUVarint64(SerializationState& state, uint64& result)
+    inline static void ReadUVarint64(PacketBuffer& buf, uint64& result)
     {
-        result = Encoding::Base128Varints::ReadUInt64(reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
+        result = Encoding::Base128Varints::ReadUInt64(reinterpret_cast<uint8_ptr>(buf.data), buf.offset);
     }
 
-    inline static void ReadSVarint64(SerializationState& state, int64& result)
+    inline static void ReadSVarint64(PacketBuffer& buf, int64& result)
     {
-        result = Encoding::ZigZag::Decode(Encoding::Base128Varints::ReadUInt64(reinterpret_cast<uint8_ptr>(state.buffer), state.offset));
+        result = Encoding::ZigZag::Decode(Encoding::Base128Varints::ReadUInt64(reinterpret_cast<uint8_ptr>(buf.data), buf.offset));
     }
 
-    inline static void ReadFloat32(SerializationState& state, float32& result)
+    inline static void ReadFloat32(PacketBuffer& buf, float32& result)
     {
-        result = *reinterpret_cast<float32_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(float32);
+        result = *reinterpret_cast<float32_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(float32);
     }
 
-    inline static void ReadFloat64(SerializationState& state, float64& result)
+    inline static void ReadFloat64(PacketBuffer& buf, float64& result)
     {
-        result = *reinterpret_cast<float64_ptr>(state.buffer + state.offset);
-        state.offset += sizeof(float64);
+        result = *reinterpret_cast<float64_ptr>(buf.data + buf.offset);
+        buf.offset += sizeof(float64);
     }
 
-    inline static void ReadString(SerializationState& state, string& result)
+    inline static void ReadString(PacketBuffer& buf, string& result)
     {
-        int32 length = Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(state.buffer), state.offset);
-        result.assign(state.buffer + state.offset, length);
-        state.offset += length;
+        int32 length = Encoding::Base128Varints::ReadUInt32(reinterpret_cast<uint8_ptr>(buf.data), buf.offset);
+        result.assign(buf.data + buf.offset, length);
+        buf.offset += length;
     }
 };
 

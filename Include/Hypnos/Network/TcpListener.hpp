@@ -16,7 +16,7 @@ public:
     inline void Send(ResponseBase* response) override;
 
 private:
-    Container::UnorderedMap<SOCKET, Connection*> connectionMap;
+    Container::UnorderedMap<Socket, Connection*> connectionMap;
 
     void ProcessEvents();
     void SendResponses();
@@ -25,7 +25,7 @@ private:
 #if defined _WIN32
     inline void Receive(Connection* readState, IocpEventArgs* iocpArgs);
 #elif defined __linux__
-    inline void Receive(SOCKET sock);
+    inline void Receive(Socket sock);
 #endif
 };
 

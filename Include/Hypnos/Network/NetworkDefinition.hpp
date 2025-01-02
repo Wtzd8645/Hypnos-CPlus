@@ -1,26 +1,27 @@
 #pragma once
 
+#include <Hypnos-Core/Type.hpp>
 #if defined _WIN32
 
 #elif defined __linux__
 #include <netinet/in.h>
 #endif
-#include <Hypnos-Core/Type.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
 
+typedef uint8 SocketId, SocketEventId;
+typedef uint16 RequestId;
+typedef int16 PacketLengthSize;
 #if defined _WIN32
-typedef SOCKET SOCKET;
+typedef SOCKET Socket;
 constexpr const char* DEFAULT_PORT = "27015";
 #elif defined __linux__
-typedef int SOCKET;
-constexpr const int INVALID_SOCKET = -1;
-constexpr const int SOCKET_ERROR = -1;
+typedef int Socket;
 constexpr const int INVALID_FD = -1;
+constexpr const int SOCKET_ERROR = -1;
 constexpr const uint16 DEFAULT_PORT = 27015;
 #endif
-typedef int16 PacketLengthSize;
 
 enum TransportProtocol
 {
@@ -30,24 +31,22 @@ enum TransportProtocol
     RUDP = 3
 };
 
-struct ConnectionId
+struct ConnectionEvent
 {
-    SOCKET sock;
-    sockaddr addr;
+    SocketId sockId;
+    SocketEventId evtId;
 };
 
 struct PacketBuffer
 {
+    char_ptr data;
     int32 offset;
-    char* final;
-    char* compress;
-    char* encrypt;
 };
 
-struct PacketReadState
+struct PacketContext
 {
-    PacketBuffer packetBuf; // TODO: Make compress and encrypt buffer to thread static.
-    bool isWaitingPacketSize = true;
+    PacketBuffer buffer;
+    bool isWaitingSize = false;
     int32 waitingBytes = sizeof(PacketLengthSize);
     int32 pendingBytes = 0;
     int32 processedBytes = 0;
@@ -55,14 +54,11 @@ struct PacketReadState
 
 struct Connection
 {
-    ConnectionId connId;
-    PacketReadState readState;
-};
-
-struct SerializationState
-{
-    char_ptr buffer;
-    int32 offset;
+    Socket sock = INVALID_FD;
+    sockaddr_storage addr;
+    socklen_t addr_len = sizeof(sockaddr_storage);
+    PacketContext recvCtx;
+    PacketContext sendCtx;
 };
 
 struct MessageHeader
@@ -75,10 +71,10 @@ struct MessageHeader
 } // namespace Blanketmen
 
 template<>
-struct std::hash<Blanketmen::Hypnos::ConnectionId>
+struct std::hash<Blanketmen::Hypnos::Connection>
 {
-    std::size_t operator()(Blanketmen::Hypnos::ConnectionId const& connId) const noexcept
+    std::size_t operator()(Blanketmen::Hypnos::Connection const& conn) const noexcept
     {
-        return std::hash<std::string>{ }(connId.addr.sa_data);
+        return std::hash<Blanketmen::Hypnos::Socket>{ }(conn.sock);
     }
 };
