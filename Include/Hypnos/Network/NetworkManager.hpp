@@ -1,14 +1,15 @@
 ﻿#pragma once
 
 #include "NetworkConfig.hpp"
+#include "NetworkDefinition.hpp"
 #include "SocketListenerBase.hpp"
 #include <Hypnos-Core/Container.hpp>
-#include <Hypnos-Core/Delegate.hpp>
+#include <Hypnos-Core/Mediation.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
 
-class NetworkManager
+class NetworkManager : public EventDispatcher<uint16, uint16>
 {
 public:
     inline static NetworkManager& Instance() noexcept
@@ -20,11 +21,9 @@ public:
 private:
     NetworkManager() { }
     NetworkManager(NetworkManager const&) = delete;
-    void operator=(NetworkManager const&) = delete;
-    ~NetworkManager() { }
+    ~NetworkManager() override { }
 
-    SocketListenerBase* socketListener;
-    Container::UnorderedMap<uint16, Delegate<RequestBase&>*> requestHandlerMap;
+    void operator=(NetworkManager const&) = delete;
 
 public:
     void Initialize(NetworkConfig* config);
@@ -57,6 +56,10 @@ public:
             del->Remove<TObj>(objPtr, mtdPtr);
         }
     }
+
+private:
+    SocketListenerBase* socketListener;
+    Container::UnorderedMap<uint16, Delegate<RequestBase&>*> requestHandlerMap;
 };
 
 } // namespace Hypnos

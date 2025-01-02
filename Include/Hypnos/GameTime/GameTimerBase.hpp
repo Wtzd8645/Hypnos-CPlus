@@ -2,9 +2,7 @@
 
 #include "GameTimeDefinition.hpp"
 #include "GameTimeManager.hpp"
-#include <Hypnos-Core/Delegate.hpp>
 #include <Hypnos-Core/Type.hpp>
-#include <memory>
 
 namespace Blanketmen {
 namespace Hypnos {

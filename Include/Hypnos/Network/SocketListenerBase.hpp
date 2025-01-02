@@ -16,7 +16,7 @@
 #endif
 
 #include <Hypnos-Core/Container.hpp>
-#include <Hypnos-Core/Delegate.hpp>
+#include <Hypnos-Core/Mediation.hpp>
 #include <Hypnos-Core/Thread.hpp>
 #include <Hypnos/Logging.hpp>
 #include "NetworkDefinition.hpp"
