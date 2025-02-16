@@ -31,14 +31,14 @@ void NetworkManager::Release()
     //delete socketListener;
 }
 
-void NetworkManager::Listen(SocketId id)
+void NetworkManager::Listen(SocketId sockId)
 {
-    servers[id]->Listen();
+    servers[sockId]->Listen();
 }
 
-void NetworkManager::Stop(SocketId id)
+void NetworkManager::Shutdown(SocketId sockId)
 {
-    servers[id]->Stop();
+    servers[sockId]->Release();
 }
 
 } // namespace Hypnos

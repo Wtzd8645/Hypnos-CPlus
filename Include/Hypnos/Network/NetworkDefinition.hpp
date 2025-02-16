@@ -45,11 +45,24 @@ struct PacketBuffer
 
 struct PacketContext
 {
-    PacketBuffer buffer;
-    bool isWaitingSize = false;
-    int32 waitingBytes = sizeof(PacketLengthSize);
-    int32 pendingBytes = 0;
-    int32 processedBytes = 0;
+    char_ptr buffer;
+    int32 packet_bytes = 0;
+    int32 buffer_bytes = 0;
+    int32 pending_bytes = sizeof(PacketLengthSize);
+    int32 processed_bytes = 0;
+
+    inline void Reset()
+    {
+        packet_bytes = 0;
+        buffer_bytes = 0;
+        pending_bytes = sizeof(PacketLengthSize);
+        processed_bytes = 0;
+    }
+};
+
+struct SendContext
+{
+
 };
 
 struct Connection
@@ -57,8 +70,8 @@ struct Connection
     Socket sock = INVALID_FD;
     sockaddr_storage addr;
     socklen_t addr_len = sizeof(sockaddr_storage);
-    PacketContext recvCtx;
-    PacketContext sendCtx;
+    PacketContext recv_ctx;
+    PacketContext send_ctx;
 };
 
 struct MessageHeader

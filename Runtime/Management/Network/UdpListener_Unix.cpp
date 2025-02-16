@@ -91,12 +91,12 @@ UdpListener::~UdpListener()
 
     delete[] receiveBuf;
 
-    if (requestProducer != nullptr)
+    if (request_factory != nullptr)
     {
-        delete requestProducer;
+        delete request_factory;
     }
 
-    for (auto it = connectionMap.begin(); it != connectionMap.end(); ++it)
+    for (auto it = connection_map.begin(); it != connection_map.end(); ++it)
     {
         delete it->second;
     }
@@ -111,13 +111,13 @@ inline void UdpListener::Listen()
 
 inline void UdpListener::Dispatch()
 {
-    Container::Vector<RequestBase*>* temp = consumerRequests;
-    consumerRequests = producerRequests;
-    requestLocker.lock();
-    producerRequests = temp;
-    requestLocker.unlock();
+    Container::Vector<RequestBase*>* temp = consumer_requests;
+    consumer_requests = producer_requests;
+    request_mutex.lock();
+    producer_requests = temp;
+    request_mutex.unlock();
 
-    for (auto it = consumerRequests->begin(); it != consumerRequests->end(); ++it)
+    for (auto it = consumer_requests->begin(); it != consumer_requests->end(); ++it)
     {
         Delegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
         if (handler != nullptr)
@@ -125,13 +125,13 @@ inline void UdpListener::Dispatch()
             (*handler)(**it);
         }
     }
-    consumerRequests->clear();
+    consumer_requests->clear();
 }
 
 inline void UdpListener::Send(ResponseBase* response)
 {
     responseLocker.lock();
-    producerResponses->push_back(response);
+    producer_responses->push_back(response);
     hasNewResponse = true;
     responseLocker.unlock();
     responseCv.notify_one();
@@ -198,7 +198,7 @@ inline void UdpListener::Receive()
         }
 
         // TODO: Rewrite here
-        // ConnectionId** connId = &connectionMap[std::move(string(addr.sa_data))];
+        // ConnectionId** connId = &connection_map[std::move(string(addr.sa_data))];
         // if (*connId == nullptr)
         // {
         //     *connId = new ConnectionId();
@@ -206,7 +206,7 @@ inline void UdpListener::Receive()
         // }
         // 
         // // TODO: Optimize packet process.
-        // if (!requestProducer->Produce(receiveBuf + sizeof(PacketLengthSize), *connId))
+        // if (!requestProducer->Create(receiveBuf + sizeof(PacketLengthSize), *connId))
         // {
         //     Logging::Error("[UdpListener] Create resquest failed.");
         //}
@@ -224,15 +224,15 @@ void UdpListener::SendResponses()
 
     while (true)
     {
-        Container::Vector<ResponseBase*>* temp = consumerResponses;
-        consumerResponses = producerResponses;
+        Container::Vector<ResponseBase*>* temp = consumer_responses;
+        consumer_responses = producer_responses;
         responseCv.wait(lock, [this] { return hasNewResponse; });
 
-        producerResponses = temp;
+        producer_responses = temp;
         hasNewResponse = false;
         responseLocker.unlock();
 
-        for (auto respIt = consumerResponses->begin(); respIt != consumerResponses->end(); ++respIt)
+        for (auto respIt = consumer_responses->begin(); respIt != consumer_responses->end(); ++respIt)
         {
             ResponseBase* resp = *respIt;
             int32 packetBytes = (*respIt)->Pack(buffer);
@@ -251,7 +251,7 @@ void UdpListener::SendResponses()
                 }
             }
         }
-        consumerResponses->clear();
+        consumer_responses->clear();
     }
 }
 

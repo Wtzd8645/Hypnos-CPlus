@@ -89,21 +89,21 @@ void TcpSocket::Send()
 
 void TcpSocket::ProcessEvents()
 {
-    struct io_uring ring;
-    io_uring_queue_init(256, &ring, 0);
+    struct io_uring io_ring;
+    io_uring_queue_init(256, &io_ring, 0);
 
     // 提交初始的 accept 請求
     sockaddr_in client_addr{};
     socklen_t client_len = sizeof(client_addr);
 
-    struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+    struct io_uring_sqe* sqe = io_uring_get_sqe(&io_ring);
     io_uring_prep_accept(sqe, sock_fd, (sockaddr*)&client_addr, &client_len, 0);
-    io_uring_submit(&ring);
+    io_uring_submit(&io_ring);
 
     while (true)
     {
         struct io_uring_cqe* cqe;
-        int ret = io_uring_wait_cqe(&ring, &cqe);
+        int ret = io_uring_wait_cqe(&io_ring, &cqe);
         if (ret < 0)
         {
             perror("io_uring_wait_cqe failed");
@@ -117,10 +117,10 @@ void TcpSocket::ProcessEvents()
 
             // 回顯消息
             Client* client = new Client{ client_fd };
-            struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+            struct io_uring_sqe* sqe = io_uring_get_sqe(&io_ring);
             io_uring_prep_recv(sqe, client_fd, client->data, BUFFER_SIZE, 0);
             io_uring_sqe_set_data(sqe, client);
-            io_uring_submit(&ring);
+            io_uring_submit(&io_ring);
         }
         else
         {
@@ -138,10 +138,10 @@ void TcpSocket::ProcessEvents()
                 //std::cout << "Received: " << std::string(client->buffer, cqe->res) << "\n";
 
                 // Echo back the message
-                struct io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+                struct io_uring_sqe* sqe = io_uring_get_sqe(&io_ring);
                 io_uring_prep_send(sqe, client->fd, client->data, cqe->res, 0);
                 io_uring_sqe_set_data(sqe, client);
-                io_uring_submit(&ring);
+                io_uring_submit(&io_ring);
             }
             else
             {
@@ -150,10 +150,10 @@ void TcpSocket::ProcessEvents()
             }
         }
 
-        io_uring_cqe_seen(&ring, cqe); // 標記完成事件已處理
+        io_uring_cqe_seen(&io_ring, cqe); // 標記完成事件已處理
     }
 
-    io_uring_queue_exit(&ring);
+    io_uring_queue_exit(&io_ring);
     close(sock_fd);
 }
 

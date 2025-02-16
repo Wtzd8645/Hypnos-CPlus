@@ -15,17 +15,18 @@ public:
     Connection* conn;
     MessageHeader header;
 
-    void Unpack(PacketBuffer& src)
+    void Unpack(char_ptr buf)
     {
         // TODO: Decrypt
         // TODO: Decompress
-        buffer.data = src.data + src.offset;
-        buffer.offset = 0;
+        buffer = buf;
+        offset = 0;
         UnpackBody();
     }
 
 protected:
-    PacketBuffer buffer;
+    char_ptr buffer;
+    int32 offset;
 
     virtual void UnpackBody() = 0;
 };

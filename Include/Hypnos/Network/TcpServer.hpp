@@ -3,6 +3,7 @@
 #include "Hypnos/Network/NetworkDefinition.hpp"
 #include "Hypnos/Network/SocketServerBase.hpp"
 #include <Hypnos-Core/Container/UnorderedMap.hpp>
+#include <Hypnos-Core/Threads/SPSC/RingBuffer.hpp>
 #include <Hypnos-Core/Thread.hpp>
 #include <atomic>
 #if defined _WIN32
@@ -10,6 +11,7 @@
 #elif defined __linux__
 #include <liburing.h>
 #endif
+#include "RequestFactoryBase.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -24,58 +26,43 @@ public:
     void Release() override;
 
     void Listen() override;
-    void Stop() override;
     void Dispatch() override;
     void Send(ResponseBase* resp) override;
 
 private:
-    Socket server_fd;
+    Socket sock;
+
+    std::atomic<bool> running;
+    std::unique_ptr<Thread> io_thread;
+    io_uring io_ring;
+
+    Threads::SPSC::RingBuffer<ConnectionEvent> events;
+    Container::UnorderedMap<SocketId, EventHandler<ConnectionEvent>*> event_handlers;
+
     Connection accept_conn;
+    Container::UnorderedMap<Socket, Connection*> connection_map;
 
-    std::atomic<bool> running{ true };
-    Thread* recv_thread;
-    io_uring recv_ring;
-    Thread* send_thread;
-    io_uring send_ring;
+    RequestFactoryBase* request_factory;
+    Threads::SPSC::RingBuffer<RequestBase*> requests;
 
-    Container::UnorderedMap<Socket, Connection*> connectionMap;
-
-    void ProcessRecvEvents();
-    void ProcessSendEvents();
     void Accept();
-    void HandleAccept(int result);
+    void Close(Connection* conn);
     void Receive(Connection* conn);
-    void HandleReceive(Connection* conn, int result);
-    void HandleSend(Connection* conn, int result);
 
-    void HandleCqeError(int result)
-    {
-        switch (-result)
-        {
-            case EIO:
-            case EAGAIN:
-            case ENOMEM:
-            case EBUSY:
-            {
-                Logging::Warning("[TcpSocket] Failed to wait for CQE. Error: %d", result);
-                usleep(1000);
-                return;
-            }
-            case ENXIO:
-            case EBADF:
-            case EFAULT:
-            case ENODEV:
-            case EINVAL:
-            case ENOSPC:
-            {
-                throw std::runtime_error("[TcpSocket] Fatal CQE error. Error: " + std::string(strerror(errno)));
-            }
-            default:
-            {
-                throw std::runtime_error("[TcpSocket] Unknown CQE error. Error: " + std::string(strerror(errno)));
-            }
-        }
-    }
+    void ProcessEvents();
+    void OnCqeError(int err);
+
+    void OnAccept(Connection* conn, int32 res, int32 flags);
+    void OnAcceptSuccess(Connection* conn, int32 res);
+    void OnAcceptError(Connection* conn, int32 err);
+
+    void OnReceive(Connection* conn, int32 res, int32 flags);
+    void OnReceiveSuccess(Connection* conn, int32 res);
+    void OnReceiveError(Connection* conn, int32 err);
+
+    void OnSend(Connection* conn, int32 res);
+    void OnSendSuccess(Connection* conn, int32 res);
+    void OnSendError(Connection* conn, int32 err);
 };
 
 } // namespace Hypnos

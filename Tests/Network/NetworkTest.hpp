@@ -6,13 +6,12 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Tests {
 
-class RequestProducer : public RequestProducerBase
+class RequestProducer : public RequestFactoryBase
 {
 public:
-    RequestBase* Produce(PacketBuffer& src, Connection* conn) override
+    RequestBase* Create(char_ptr buf, Connection* conn) override
     {
-        uint16 msgId = *reinterpret_cast<uint16_ptr>(src.data + src.offset);
-        src.offset += +sizeof(msgId);
+        uint16 msgId = *reinterpret_cast<uint16_ptr>(buf);
         RequestBase* request;
         switch (msgId)
         {
@@ -24,8 +23,13 @@ public:
 
         request->conn = conn;
         request->header.msgId = msgId;
-        request->Unpack(src);
+        request->Unpack(buf + sizeof(msgId));
         return request;
+    }
+
+    void Recycle(RequestBase* req) override
+    {
+        delete req;
     }
 };
 
@@ -35,7 +39,7 @@ void NetworkPasses()
     networkCfg->listenerCfg.protocol = TransportProtocol::TCP;
     networkCfg->listenerCfg.maxConnections = 4096;
     networkCfg->listenerCfg.maxPacketBytes = 1024;
-    networkCfg->listenerCfg.requestProducer = new RequestProducer();
+    networkCfg->listenerCfg.request_factory = new RequestProducer();
     NetworkManager::Instance().Initialize(networkCfg);
 }
 

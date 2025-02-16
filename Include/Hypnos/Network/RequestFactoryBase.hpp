@@ -7,12 +7,13 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-class RequestProducerBase
+class RequestFactoryBase
 {
 public:
-    virtual ~RequestProducerBase() { }
+    virtual ~RequestFactoryBase() = default;
 
-    virtual RequestBase* Produce(PacketBuffer& src, Connection* conn) = 0;
+    virtual RequestBase* Create(char_ptr buf, Connection* conn) = 0;
+    virtual void Recycle(RequestBase* req) = 0;
 };
 
 } // namespace Hypnos

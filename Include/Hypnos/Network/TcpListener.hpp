@@ -16,7 +16,7 @@ public:
     inline void Send(ResponseBase* response) override;
 
 private:
-    Container::UnorderedMap<Socket, Connection*> connectionMap;
+    Container::UnorderedMap<Socket, Connection*> connection_map;
 
     void ProcessEvents();
     void SendResponses();

@@ -14,21 +14,22 @@ public:
     virtual ~ResponseBase() = 0;
 
     Container::Vector<Connection*> conns;
-    PacketBuffer buffer;
+    char_ptr buffer;
+    int32 offset;
 
     PacketLengthSize Pack(PacketBuffer& src)
     {
-        buffer.data = src.data + src.offset;
-        buffer.offset = sizeof(PacketLengthSize);
+        buffer = src.data + src.offset;
+        offset = sizeof(PacketLengthSize);
 
         PackHeader();
         PackBody();
 
         // TODO: Compress
         // TODO: Encrypt
-        PacketLengthSize len = buffer.offset;
-        buffer.offset = 0;
-        PacketWriter::WriteInt16(buffer, len - sizeof(PacketLengthSize));
+        PacketLengthSize len = offset;
+        offset = 0;
+        PacketWriter::WriteInt16(buffer, offset, len - sizeof(PacketLengthSize));
         return len;
     }
 
@@ -37,7 +38,7 @@ protected:
 
     inline void PackHeader()
     {
-        PacketWriter::WriteUInt16(buffer, header.msgId);
+        PacketWriter::WriteUInt16(buffer, offset, header.msgId);
     }
 
     virtual void PackBody() = 0;

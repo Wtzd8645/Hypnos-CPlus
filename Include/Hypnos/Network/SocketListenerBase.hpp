@@ -21,7 +21,7 @@
 #include <Hypnos/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"
-#include "RequestProducerBase.hpp"
+#include "RequestFactoryBase.hpp"
 #include "ResponseBase.hpp"
 
 namespace Blanketmen {
@@ -33,28 +33,28 @@ public:
     SocketListenerBase(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap) :
         maxConnections(config.maxConnections),
         maxPacketBytes(config.maxPacketBytes),
-        requestProducer(config.requestProducer),
+        request_factory(config.request_factory),
         requestHandlerMap(requestHandlerMap)
     {
         int32 msgPoolSize = maxConnections * 4;
-        producerRequests = new Container::Vector<RequestBase*>();
-        producerRequests->reserve(msgPoolSize);
-        consumerRequests = new Container::Vector<RequestBase*>();
-        consumerRequests->reserve(msgPoolSize);
+        producer_requests = new Container::Vector<RequestBase*>();
+        producer_requests->reserve(msgPoolSize);
+        consumer_requests = new Container::Vector<RequestBase*>();
+        consumer_requests->reserve(msgPoolSize);
 
-        producerResponses = new Container::Vector<ResponseBase*>();
-        producerResponses->reserve(msgPoolSize);
-        consumerResponses = new Container::Vector<ResponseBase*>();
-        consumerResponses->reserve(msgPoolSize);
+        producer_responses = new Container::Vector<ResponseBase*>();
+        producer_responses->reserve(msgPoolSize);
+        consumer_responses = new Container::Vector<ResponseBase*>();
+        consumer_responses->reserve(msgPoolSize);
     }
 
     virtual ~SocketListenerBase()
     {
-        delete requestProducer;
-        delete producerRequests;
-        delete consumerRequests;
-        delete producerResponses;
-        delete consumerResponses;
+        delete request_factory;
+        delete producer_requests;
+        delete consumer_requests;
+        delete producer_responses;
+        delete consumer_responses;
     }
 
     virtual void Listen() = 0;
@@ -107,18 +107,18 @@ protected:
     Socket listenSocket = INVALID_FD;
 
     Thread* receiveThread;
-    Mutex requestLocker;
-    Container::Vector<RequestBase*>* producerRequests;
-    Container::Vector<RequestBase*>* consumerRequests;
-    RequestProducerBase* requestProducer;
+    Mutex request_mutex;
+    Container::Vector<RequestBase*>* producer_requests;
+    Container::Vector<RequestBase*>* consumer_requests;
+    RequestFactoryBase* request_factory;
     Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap;
 
     Thread* sendThread;
     Mutex responseLocker;
     ConditionVariable responseCv;
     bool hasNewResponse = false;
-    Container::Vector<ResponseBase*>* producerResponses;
-    Container::Vector<ResponseBase*>* consumerResponses;
+    Container::Vector<ResponseBase*>* producer_responses;
+    Container::Vector<ResponseBase*>* consumer_responses;
 };
 
 } // namespace Hypnos

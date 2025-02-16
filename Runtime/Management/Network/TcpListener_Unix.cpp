@@ -88,12 +88,12 @@ TcpListener::~TcpListener()
         ::close(listenSocket);
     }
 
-    if (requestProducer != nullptr)
+    if (request_factory != nullptr)
     {
-        delete requestProducer;
+        delete request_factory;
     }
 
-    for (auto it = connectionMap.begin(); it != connectionMap.end(); ++it)
+    for (auto it = connection_map.begin(); it != connection_map.end(); ++it)
     {
         delete it->second;
     }
@@ -114,13 +114,13 @@ inline void TcpListener::Listen()
 
 inline void TcpListener::Dispatch()
 {
-    Container::Vector<RequestBase*>* temp = consumerRequests;
-    consumerRequests = producerRequests;
-    requestLocker.lock();
-    producerRequests = temp;
-    requestLocker.unlock();
+    Container::Vector<RequestBase*>* temp = consumer_requests;
+    consumer_requests = producer_requests;
+    request_mutex.lock();
+    producer_requests = temp;
+    request_mutex.unlock();
 
-    for (auto it = consumerRequests->begin(); it != consumerRequests->end(); ++it)
+    for (auto it = consumer_requests->begin(); it != consumer_requests->end(); ++it)
     {
         Delegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
         if (handler != nullptr)
@@ -129,13 +129,13 @@ inline void TcpListener::Dispatch()
             delete *it;
         }
     }
-    consumerRequests->clear();
+    consumer_requests->clear();
 }
 
 inline void TcpListener::Send(ResponseBase* response)
 {
     responseLocker.lock();
-    producerResponses->push_back(response);
+    producer_responses->push_back(response);
     hasNewResponse = true;
     responseCv.notify_one();
     responseLocker.unlock();
@@ -215,29 +215,29 @@ inline void TcpListener::Accept()
             Logging::Error("[TcpListener] Register the accepted socket epoll event failed. ErrorCode: %d", errno);
         }
 
-        Connection* conn = connectionMap[sock];
+        Connection* conn = connection_map[sock];
         if (conn == nullptr)
         {
             conn = new Connection();
-            conn->recvCtx.buffer.data = new char[maxPacketBytes * 4];
-            connectionMap[sock] = conn;
+            conn->recv_ctx.buffer = new char[maxPacketBytes * 4];
+            connection_map[sock] = conn;
         }
         conn->sock = sock;
         ::memcpy(&conn->addr, &acceptedSockAddr, sizeof(sockaddr));
-        conn->recvCtx.isWaitingSize = true; 
-        conn->recvCtx.waitingBytes = sizeof(PacketLengthSize);
-        conn->recvCtx.pendingBytes = 0;
-        conn->recvCtx.processedBytes = 0;
+        conn->recv_ctx.packet_bytes = 0;
+        conn->recv_ctx.pending_bytes = sizeof(PacketLengthSize);
+        conn->recv_ctx.buffer_bytes = 0;
+        conn->recv_ctx.processed_bytes = 0;
     }
 }
 
 inline void TcpListener::Receive(Socket sock)
 {
-    Connection* conn = connectionMap[sock];
-    PacketContext* ctx = &conn->recvCtx;
+    Connection* conn = connection_map[sock];
+    PacketContext* ctx = &conn->recv_ctx;
     while (true)
     {
-        ssize_t transferredBytes = ::recv(sock, ctx->buffer.data + ctx->pendingBytes, maxPacketBytes - ctx->pendingBytes, 0);
+        ssize_t transferredBytes = ::recv(sock, ctx->buffer + ctx->buffer_bytes, maxPacketBytes - ctx->buffer_bytes, 0);
         if (transferredBytes < 0)
         {
             int errorCode = errno;
@@ -261,42 +261,41 @@ inline void TcpListener::Receive(Socket sock)
             break;
         }
 
-        ctx->pendingBytes += transferredBytes;
-        while (ctx->pendingBytes >= ctx->waitingBytes)
+        ctx->buffer_bytes += transferredBytes;
+        while (ctx->buffer_bytes >= ctx->pending_bytes)
         {
-            if (ctx->isWaitingSize)
+            if (ctx->packet_bytes == 0)
             {
-                ctx->isWaitingSize = false;
-                ctx->waitingBytes = *reinterpret_cast<PacketLengthSize*>(ctx->buffer.data + ctx->processedBytes);
-                ctx->pendingBytes -= sizeof(PacketLengthSize);
-                ctx->processedBytes += sizeof(PacketLengthSize);
+                ctx->packet_bytes = *reinterpret_cast<PacketLengthSize*>(ctx->buffer + ctx->processed_bytes);
+                ctx->pending_bytes = ctx->packet_bytes;
+                ctx->buffer_bytes -= sizeof(PacketLengthSize);
+                ctx->processed_bytes += sizeof(PacketLengthSize);
                 continue;
             }
 
-            ctx->buffer.offset = ctx->processedBytes;
-            RequestBase* req = requestProducer->Produce(ctx->buffer, conn);
+            RequestBase* req = request_factory->Create(ctx->buffer + ctx->processed_bytes, conn);
             if (req == nullptr)
             {
                 Logging::Error("[TcpListener] Create resquest failed. socket: %p.");
                 ::close(sock);
                 break;
             }
-            requestLocker.lock();
-            producerRequests->push_back(req);
-            requestLocker.unlock();
+            request_mutex.lock();
+            producer_requests->push_back(req);
+            request_mutex.unlock();
 
-            ctx->pendingBytes -= ctx->waitingBytes;
-            ctx->processedBytes += ctx->waitingBytes;
-            ctx->isWaitingSize = true;
-            ctx->waitingBytes = sizeof(PacketLengthSize);
+            ctx->buffer_bytes -= ctx->pending_bytes;
+            ctx->processed_bytes += ctx->pending_bytes;
+            ctx->packet_bytes = 0;
+            ctx->pending_bytes = sizeof(PacketLengthSize);
         }
 
-        if (ctx->pendingBytes > 0)
+        if (ctx->buffer_bytes > 0)
         {
             // TODO: Make sure an overlapping array don't cause problems.
-            ::memcpy(ctx->buffer.data, ctx->buffer.data + ctx->processedBytes, ctx->pendingBytes);
+            ::memcpy(ctx->buffer, ctx->buffer + ctx->processed_bytes, ctx->buffer_bytes);
         }
-        ctx->processedBytes = 0;
+        ctx->processed_bytes = 0;
     }
 }
 
@@ -310,30 +309,30 @@ void TcpListener::SendResponses()
 
     while (true)
     {
-        Container::Vector<ResponseBase*>* temp = consumerResponses;
-        consumerResponses = producerResponses;
+        Container::Vector<ResponseBase*>* temp = consumer_responses;
+        consumer_responses = producer_responses;
         uniqueLock.lock();
         while (!hasNewResponse)
         {
             responseCv.wait(uniqueLock, [this] { return hasNewResponse; });
         }
 
-        producerResponses = temp;
+        producer_responses = temp;
         hasNewResponse = false;
         uniqueLock.unlock();
 
-        for (auto respIt = consumerResponses->begin(); respIt != consumerResponses->end(); ++respIt)
+        for (auto respIt = consumer_responses->begin(); respIt != consumer_responses->end(); ++respIt)
         {
             buffer.offset = 0;
             ResponseBase& resp = **respIt;
-            int32 pendingBytes = resp.Pack(buffer);
+            int32 buffer_bytes = resp.Pack(buffer);
             for (auto connIt = resp.conns.begin(); connIt != resp.conns.end(); ++connIt)
             {
                 int32 sentBytes = 0;
-                while (sentBytes < pendingBytes)
+                while (sentBytes < buffer_bytes)
                 {
                     // TODO: Use async to send
-                    ssize_t result = ::send((*connIt)->sock, sendBuf + sentBytes, pendingBytes - sentBytes, 0);
+                    ssize_t result = ::send((*connIt)->sock, sendBuf + sentBytes, buffer_bytes - sentBytes, 0);
                     if (result == SOCKET_ERROR)
                     {
                         // TODO: Process error conditions.
@@ -344,7 +343,7 @@ void TcpListener::SendResponses()
                 }
             }
         }
-        consumerResponses->clear();
+        consumer_responses->clear();
     }
 }
 

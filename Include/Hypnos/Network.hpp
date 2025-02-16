@@ -7,5 +7,5 @@
 #include "Network/PacketReader.hpp"
 #include "Network/PacketWriter.hpp"
 #include "Network/RequestBase.hpp"
-#include "Network/RequestProducerBase.hpp"
+#include "Network/RequestFactoryBase.hpp"
 #include "Network/ResponseBase.hpp"

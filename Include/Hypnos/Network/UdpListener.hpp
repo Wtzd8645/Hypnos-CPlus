@@ -17,7 +17,7 @@ public:
 
 private:
     char* receiveBuf;
-    Container::UnorderedMap<string, Connection*> connectionMap;
+    Container::UnorderedMap<string, Connection*> connection_map;
 
     void ProcessEvents();
     void SendResponses();

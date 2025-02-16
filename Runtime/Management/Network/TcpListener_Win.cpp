@@ -7,17 +7,17 @@ namespace Hypnos {
 TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictionary<uint16, Delegate<RequestBase*>*> reqHandlerDict) :
     iocpThreads(8),
     maxConnections(maxConns),
-    requestFactory(requestFcty),
+    request_factory(requestFcty),
     requestHandlerDict(reqHandlerDict)
 {
     int32 messagePoolSize = maxConns * 4;
-    producerRequests = new SLinkedList<RequestBase*>(messagePoolSize);
-    consumerRequests = new SLinkedList<RequestBase*>(messagePoolSize);
+    producer_requests = new SLinkedList<RequestBase*>(messagePoolSize);
+    consumer_requests = new SLinkedList<RequestBase*>(messagePoolSize);
     producerResponses = new SLinkedList<ResponseBase*>(messagePoolSize);
     consumerResponses = new SLinkedList<ResponseBase*>(messagePoolSize);
 
     ::InitializeCriticalSection(&clientLocker);
-    ::InitializeCriticalSection(&requestLocker);
+    ::InitializeCriticalSection(&request_mutex);
     WSADATA wsaData;
     if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
@@ -70,7 +70,7 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
 TcpListener::~TcpListener()
 {
     ::DeleteCriticalSection(&clientLocker);
-    ::DeleteCriticalSection(&requestLocker);
+    ::DeleteCriticalSection(&request_mutex);
     for (auto it = iocpThreads.begin(); it != iocpThreads.end(); ++it)
     {
         (*it)->detach();
@@ -84,12 +84,12 @@ TcpListener::~TcpListener()
     ::closesocket(listenSocket);
     ::WSACleanup();
 
-    if (requestFactory != nullptr)
+    if (request_factory != nullptr)
     {
-        delete requestFactory;
+        delete request_factory;
     }
-    delete producerRequests;
-    delete consumerRequests;
+    delete producer_requests;
+    delete consumer_requests;
     delete producerResponses;
     delete consumerResponses;
 }
@@ -124,8 +124,8 @@ inline void TcpListener::Listen()
 
 inline void TcpListener::Dispatch()
 {
-    ::EnterCriticalSection(&requestLocker);
-    for (auto it = consumerRequests.begin(); it != consumerRequests.end(); ++it)
+    ::EnterCriticalSection(&request_mutex);
+    for (auto it = consumer_requests.begin(); it != consumer_requests.end(); ++it)
     {
         Delegate<RequestBase*>* handler = requestHandlerDict[(*it)->header.msgId];
         if (handler == nullptr)
@@ -134,8 +134,8 @@ inline void TcpListener::Dispatch()
         }
         (*handler)(*it);
     }
-    consumerRequests.Clear();
-    ::LeaveCriticalSection(&requestLocker);
+    consumer_requests.Clear();
+    ::LeaveCriticalSection(&request_mutex);
 }
 
 void TcpListener::ProcessEvents()
@@ -164,18 +164,18 @@ void TcpListener::ProcessEvents()
         uint32 bytesProcessed = 0;
         while (bytesTransferred > 0)
         {
-            uint32 bytesUnreceived = client->waitingBytes - client->pendingBytes;
+            uint32 bytesUnreceived = client->pending_bytes - client->buffer_bytes;
             if (bytesTransferred < bytesUnreceived)
             {
-                ::memcpy(&client->receiveBuffer + client->pendingBytes, iocpArgs->wsaBuffer.buf + bytesProcessed, bytesTransferred);
-                client->pendingBytes += bytesTransferred;
+                ::memcpy(&client->receiveBuffer + client->buffer_bytes, iocpArgs->wsaBuffer.buf + bytesProcessed, bytesTransferred);
+                client->buffer_bytes += bytesTransferred;
                 break;
             }
 
             char_ptr dataBuf;
-            if (client->pendingBytes != 0u)
+            if (client->buffer_bytes != 0u)
             {
-                ::memcpy(&client->receiveBuffer + client->pendingBytes, iocpArgs->wsaBuffer.buf + bytesProcessed, bytesUnreceived);
+                ::memcpy(&client->receiveBuffer + client->buffer_bytes, iocpArgs->wsaBuffer.buf + bytesProcessed, bytesUnreceived);
                 dataBuf = client->receiveBuffer;
             }
             else
@@ -188,13 +188,13 @@ void TcpListener::ProcessEvents()
             if (client->isWaitingPacketSize)
             {
                 client->isWaitingPacketSize = false;
-                client->waitingBytes = *reinterpret_cast<packet_size*>(dataBuf);
-                client->pendingBytes = 0u;
+                client->pending_bytes = *reinterpret_cast<packet_size*>(dataBuf);
+                client->buffer_bytes = 0u;
                 continue;
             }
             client->isWaitingPacketSize = true;
-            client->waitingBytes = PACKET_LEN_SIZE;
-            client->pendingBytes = 0u;
+            client->pending_bytes = PACKET_LEN_SIZE;
+            client->buffer_bytes = 0u;
 
             uint8 seq = *reinterpret_cast<uint8_ptr>(dataBuf);
             if (seq != client->serialNumber)
@@ -206,13 +206,13 @@ void TcpListener::ProcessEvents()
             }
             ++client->serialNumber;
 
-            RequestBase* request = requestFactory->Create(dataBuf + sizeof(seq));
+            RequestBase* request = request_factory->Create(dataBuf + sizeof(seq));
             if (request != nullptr)
             {
                 request->client = client;
-                ::EnterCriticalSection(&requestLocker);
-                consumerRequests.AddLast(request);
-                ::LeaveCriticalSection(&requestLocker);
+                ::EnterCriticalSection(&request_mutex);
+                consumer_requests.AddLast(request);
+                ::LeaveCriticalSection(&request_mutex);
                 Logging::Info("[NetworkManager] Unpack message successfully. msgId: %d", request->header.msgId);
             }
         }
