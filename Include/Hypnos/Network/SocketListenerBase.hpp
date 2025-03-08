@@ -15,9 +15,10 @@
 #include <sys/unistd.h>
 #endif
 
-#include <Hypnos-Core/Container.hpp>
+#include <Hypnos-Core/Container/List.hpp>
+#include <Hypnos-Core/Container/UnorderedMap.hpp>
 #include <Hypnos-Core/Mediation.hpp>
-#include <Hypnos-Core/Thread.hpp>
+#include <Hypnos-Core/Threads.hpp>
 #include <Hypnos/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"
@@ -37,14 +38,14 @@ public:
         requestHandlerMap(requestHandlerMap)
     {
         int32 msgPoolSize = maxConnections * 4;
-        producer_requests = new Container::Vector<RequestBase*>();
+        producer_requests = new Container::List<RequestBase*>();
         producer_requests->reserve(msgPoolSize);
-        consumer_requests = new Container::Vector<RequestBase*>();
+        consumer_requests = new Container::List<RequestBase*>();
         consumer_requests->reserve(msgPoolSize);
 
-        producer_responses = new Container::Vector<ResponseBase*>();
+        producer_responses = new Container::List<ResponseBase*>();
         producer_responses->reserve(msgPoolSize);
-        consumer_responses = new Container::Vector<ResponseBase*>();
+        consumer_responses = new Container::List<ResponseBase*>();
         consumer_responses->reserve(msgPoolSize);
     }
 
@@ -94,7 +95,7 @@ protected:
     static CRITICAL_SECTION requestLocker;
     static HANDLE iocpHandle;
 
-    SLinkedList<std::thread*> iocpThreads;
+    ForwardList<std::thread*> iocpThreads;
 #elif defined __linux__
     int epfd;
     epoll_event epEvent;
@@ -108,8 +109,8 @@ protected:
 
     Thread* receiveThread;
     Mutex request_mutex;
-    Container::Vector<RequestBase*>* producer_requests;
-    Container::Vector<RequestBase*>* consumer_requests;
+    Container::List<RequestBase*>* producer_requests;
+    Container::List<RequestBase*>* consumer_requests;
     RequestFactoryBase* request_factory;
     Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap;
 
@@ -117,8 +118,8 @@ protected:
     Mutex responseLocker;
     ConditionVariable responseCv;
     bool hasNewResponse = false;
-    Container::Vector<ResponseBase*>* producer_responses;
-    Container::Vector<ResponseBase*>* consumer_responses;
+    Container::List<ResponseBase*>* producer_responses;
+    Container::List<ResponseBase*>* consumer_responses;
 };
 
 } // namespace Hypnos

@@ -2,8 +2,9 @@
 
 #include "NetworkDefinition.hpp"
 #include "PacketWriter.hpp"
-#include <Hypnos-Core/Container/Vector.hpp>
+#include <Hypnos-Core/Container/ForwardListEx.hpp>
 #include <Hypnos/Logging.hpp>
+#include <forward_list>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -11,29 +12,35 @@ namespace Hypnos {
 class ResponseBase
 {
 public:
+    Container::ForwardListEx<Connection*> conns;
+
+    uint8* buffer;
+    packet_size length;
+    
     virtual ~ResponseBase() = 0;
 
-    Container::Vector<Connection*> conns;
-    char_ptr buffer;
-    int32 offset;
-
-    PacketLengthSize Pack(PacketBuffer& src)
+    void Pack(uint8* buf, int32 cap)
     {
-        buffer = src.data + src.offset;
-        offset = sizeof(PacketLengthSize);
-
+        buffer = buf;
+        offset = sizeof(packet_size);
         PackHeader();
         PackBody();
 
         // TODO: Compress
         // TODO: Encrypt
-        PacketLengthSize len = offset;
+        length = offset;
         offset = 0;
-        PacketWriter::WriteInt16(buffer, offset, len - sizeof(PacketLengthSize));
-        return len;
+        //*(buffer) = 1;
+        byte a;
+        byte b;
+        byte c = a;
+
+        PacketWriter::WriteInt16(buffer, offset, length - sizeof(packet_size)); // TODO: Sholud header be included?
     }
 
 protected:
+    int32 offset;
+
     MessageHeader header;
 
     inline void PackHeader()

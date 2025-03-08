@@ -11,10 +11,10 @@ TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictio
     requestHandlerDict(reqHandlerDict)
 {
     int32 messagePoolSize = maxConns * 4;
-    producer_requests = new SLinkedList<RequestBase*>(messagePoolSize);
-    consumer_requests = new SLinkedList<RequestBase*>(messagePoolSize);
-    producerResponses = new SLinkedList<ResponseBase*>(messagePoolSize);
-    consumerResponses = new SLinkedList<ResponseBase*>(messagePoolSize);
+    producer_requests = new FowardList<RequestBase*>(messagePoolSize);
+    consumer_requests = new FowardList<RequestBase*>(messagePoolSize);
+    producerResponses = new FowardList<ResponseBase*>(messagePoolSize);
+    consumerResponses = new FowardList<ResponseBase*>(messagePoolSize);
 
     ::InitializeCriticalSection(&clientLocker);
     ::InitializeCriticalSection(&request_mutex);
@@ -196,7 +196,7 @@ void TcpListener::ProcessEvents()
             client->pending_bytes = PACKET_LEN_SIZE;
             client->buffer_bytes = 0u;
 
-            uint8 seq = *reinterpret_cast<uint8_ptr>(dataBuf);
+            uint8 seq = *reinterpret_cast<uint8*>(dataBuf);
             if (seq != client->serialNumber)
             {
                 Logging::Error("[NetworkManager] SerialNumber is not equal. Client: %p", client);

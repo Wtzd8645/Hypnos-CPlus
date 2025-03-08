@@ -31,12 +31,12 @@ void NetworkManager::Release()
     //delete socketListener;
 }
 
-void NetworkManager::Listen(SocketId sockId)
+void NetworkManager::Listen(ServerId sockId)
 {
     servers[sockId]->Listen();
 }
 
-void NetworkManager::Shutdown(SocketId sockId)
+void NetworkManager::Shutdown(ServerId sockId)
 {
     servers[sockId]->Release();
 }

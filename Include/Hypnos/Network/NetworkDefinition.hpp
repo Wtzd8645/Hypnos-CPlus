@@ -1,6 +1,9 @@
 #pragma once
 
+#include <Hypnos-Core/Container/Queue.hpp>
 #include <Hypnos-Core/Type.hpp>
+#include <list>
+
 #if defined _WIN32
 
 #elif defined __linux__
@@ -10,9 +13,21 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-typedef uint8 SocketId, SocketEventId;
+constexpr const int32 MAX_ETH_MTU = 1500; // Ethernet (Standard) MTU.
+constexpr const int32 MAX_WIFI_MTU = 1500; // Wi-Fi (802.11) MTU.
+constexpr const int32 MAX_PPPoE_MTU = 1492; // PPPoE (DSL) MTU.
+constexpr const int32 MAX_VPN_MTU = 1476; // VPN (GRE Tunnel) MTU.
+constexpr const int32 MAX_JUMBO_MTU = 9000; // Jumbo Frames MTU.
+constexpr const int32 MAX_LOOPBACK_MTU = 65536; // Loopback (lo Interface) MTU.
+constexpr const int32 MIN_IPV6_MTU = 1280; // IPv6 (Minimum) MTU.
+
+typedef int16 packet_size;
+
+typedef uint8 ServerId, ServerEventId;
 typedef uint16 RequestId;
-typedef int16 PacketLengthSize;
+
+constexpr const int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
+
 #if defined _WIN32
 typedef SOCKET Socket;
 constexpr const char* DEFAULT_PORT = "27015";
@@ -33,36 +48,16 @@ enum TransportProtocol
 
 struct ConnectionEvent
 {
-    SocketId sockId;
-    SocketEventId evtId;
-};
-
-struct PacketBuffer
-{
-    char_ptr data;
-    int32 offset;
+    ServerId sockId;
+    ServerEventId evtId;
 };
 
 struct PacketContext
 {
-    char_ptr buffer;
-    int32 packet_bytes = 0;
-    int32 buffer_bytes = 0;
-    int32 pending_bytes = sizeof(PacketLengthSize);
-    int32 processed_bytes = 0;
-
-    inline void Reset()
-    {
-        packet_bytes = 0;
-        buffer_bytes = 0;
-        pending_bytes = sizeof(PacketLengthSize);
-        processed_bytes = 0;
-    }
-};
-
-struct SendContext
-{
-
+    uint8* buffer;
+    packet_size pending_bytes = 0;
+    packet_size processed_bytes = 0;
+    Container::Queue<uint8*> next_buffers;
 };
 
 struct Connection
@@ -72,6 +67,29 @@ struct Connection
     socklen_t addr_len = sizeof(sockaddr_storage);
     PacketContext recv_ctx;
     PacketContext send_ctx;
+};
+
+struct ReceiveMetadata
+{
+    inline static ReceiveMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<ReceiveMetadata*>(buffer + offset); }
+
+    Connection* conn;
+    int32 bid;
+    packet_size size;
+};
+
+struct SendMetadata
+{
+    inline static SendMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<SendMetadata*>(buffer + offset); }
+
+    int32 ref_count;
+    packet_size size;
+};
+
+union BufferMetadata
+{
+    ReceiveMetadata recv_meta;
+    SendMetadata send_meta;
 };
 
 struct MessageHeader

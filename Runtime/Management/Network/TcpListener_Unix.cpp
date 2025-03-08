@@ -114,7 +114,7 @@ inline void TcpListener::Listen()
 
 inline void TcpListener::Dispatch()
 {
-    Container::Vector<RequestBase*>* temp = consumer_requests;
+    Container::List<RequestBase*>* temp = consumer_requests;
     consumer_requests = producer_requests;
     request_mutex.lock();
     producer_requests = temp;
@@ -219,132 +219,132 @@ inline void TcpListener::Accept()
         if (conn == nullptr)
         {
             conn = new Connection();
-            conn->recv_ctx.buffer = new char[maxPacketBytes * 4];
+            conn->recv_ctx.buffer = new uint8[maxPacketBytes * 4];
             connection_map[sock] = conn;
         }
-        conn->sock = sock;
-        ::memcpy(&conn->addr, &acceptedSockAddr, sizeof(sockaddr));
-        conn->recv_ctx.packet_bytes = 0;
-        conn->recv_ctx.pending_bytes = sizeof(PacketLengthSize);
-        conn->recv_ctx.buffer_bytes = 0;
-        conn->recv_ctx.processed_bytes = 0;
+        //conn->sock = sock;
+        //::memcpy(&conn->addr, &acceptedSockAddr, sizeof(sockaddr));
+        //conn->recv_ctx.packet_bytes = 0;
+        //conn->recv_ctx.pending_bytes = sizeof(packet_size);
+        //conn->recv_ctx.buffer_bytes = 0;
+        //conn->recv_ctx.processed_bytes = 0;
     }
 }
 
 inline void TcpListener::Receive(Socket sock)
 {
-    Connection* conn = connection_map[sock];
-    PacketContext* ctx = &conn->recv_ctx;
-    while (true)
-    {
-        ssize_t transferredBytes = ::recv(sock, ctx->buffer + ctx->buffer_bytes, maxPacketBytes - ctx->buffer_bytes, 0);
-        if (transferredBytes < 0)
-        {
-            int errorCode = errno;
-            if (errorCode == EAGAIN || errorCode == EWOULDBLOCK)
-            {
-                break;
-            }
+    //Connection* conn = connection_map[sock];
+    //PacketContext* ctx = &conn->recv_ctx;
+    //while (true)
+    //{
+    //    ssize_t transferredBytes = ::recv(sock, ctx->buffer + ctx->buffer_bytes, maxPacketBytes - ctx->buffer_bytes, 0);
+    //    if (transferredBytes < 0)
+    //    {
+    //        int errorCode = errno;
+    //        if (errorCode == EAGAIN || errorCode == EWOULDBLOCK)
+    //        {
+    //            break;
+    //        }
 
-            if (errorCode == EINTR)
-            {
-                continue;
-            }
+    //        if (errorCode == EINTR)
+    //        {
+    //            continue;
+    //        }
 
-            ::close(sock);
-            break;
-        }
+    //        ::close(sock);
+    //        break;
+    //    }
 
-        if (transferredBytes == 0)
-        {
-            ::close(sock);
-            break;
-        }
+    //    if (transferredBytes == 0)
+    //    {
+    //        ::close(sock);
+    //        break;
+    //    }
 
-        ctx->buffer_bytes += transferredBytes;
-        while (ctx->buffer_bytes >= ctx->pending_bytes)
-        {
-            if (ctx->packet_bytes == 0)
-            {
-                ctx->packet_bytes = *reinterpret_cast<PacketLengthSize*>(ctx->buffer + ctx->processed_bytes);
-                ctx->pending_bytes = ctx->packet_bytes;
-                ctx->buffer_bytes -= sizeof(PacketLengthSize);
-                ctx->processed_bytes += sizeof(PacketLengthSize);
-                continue;
-            }
+    //    ctx->buffer_bytes += transferredBytes;
+    //    while (ctx->buffer_bytes >= ctx->pending_bytes)
+    //    {
+    //        if (ctx->packet_bytes == 0)
+    //        {
+    //            ctx->packet_bytes = *reinterpret_cast<packet_size*>(ctx->buffer + ctx->processed_bytes);
+    //            ctx->pending_bytes = ctx->packet_bytes;
+    //            ctx->buffer_bytes -= sizeof(packet_size);
+    //            ctx->processed_bytes += sizeof(packet_size);
+    //            continue;
+    //        }
 
-            RequestBase* req = request_factory->Create(ctx->buffer + ctx->processed_bytes, conn);
-            if (req == nullptr)
-            {
-                Logging::Error("[TcpListener] Create resquest failed. socket: %p.");
-                ::close(sock);
-                break;
-            }
-            request_mutex.lock();
-            producer_requests->push_back(req);
-            request_mutex.unlock();
+    //        RequestBase* req = request_factory->Create(ctx->buffer + ctx->processed_bytes, conn);
+    //        if (req == nullptr)
+    //        {
+    //            Logging::Error("[TcpListener] Create resquest failed. socket: %p.");
+    //            ::close(sock);
+    //            break;
+    //        }
+    //        request_mutex.lock();
+    //        producer_requests->push_back(req);
+    //        request_mutex.unlock();
 
-            ctx->buffer_bytes -= ctx->pending_bytes;
-            ctx->processed_bytes += ctx->pending_bytes;
-            ctx->packet_bytes = 0;
-            ctx->pending_bytes = sizeof(PacketLengthSize);
-        }
+    //        ctx->buffer_bytes -= ctx->pending_bytes;
+    //        ctx->processed_bytes += ctx->pending_bytes;
+    //        ctx->packet_bytes = 0;
+    //        ctx->pending_bytes = sizeof(packet_size);
+    //    }
 
-        if (ctx->buffer_bytes > 0)
-        {
-            // TODO: Make sure an overlapping array don't cause problems.
-            ::memcpy(ctx->buffer, ctx->buffer + ctx->processed_bytes, ctx->buffer_bytes);
-        }
-        ctx->processed_bytes = 0;
-    }
+    //    if (ctx->buffer_bytes > 0)
+    //    {
+    //        // TODO: Make sure an overlapping array don't cause problems.
+    //        ::memcpy(ctx->buffer, ctx->buffer + ctx->processed_bytes, ctx->buffer_bytes);
+    //    }
+    //    ctx->processed_bytes = 0;
+    //}
 }
 
 void TcpListener::SendResponses()
 {
-    char sendBuf[maxPacketBytes * 16];
-    char compressBuf[maxPacketBytes];
-    char encryptBuf[maxPacketBytes];
-    PacketBuffer buffer{ sendBuf, 0 };
-    UniqueLock<Mutex> uniqueLock(responseLocker, std::defer_lock);
+    //char sendBuf[maxPacketBytes * 16];
+    //char compressBuf[maxPacketBytes];
+    //char encryptBuf[maxPacketBytes];
+    //PacketBuffer buffer{ sendBuf, 0 };
+    //UniqueLock<Mutex> uniqueLock(responseLocker, std::defer_lock);
 
-    while (true)
-    {
-        Container::Vector<ResponseBase*>* temp = consumer_responses;
-        consumer_responses = producer_responses;
-        uniqueLock.lock();
-        while (!hasNewResponse)
-        {
-            responseCv.wait(uniqueLock, [this] { return hasNewResponse; });
-        }
+    //while (true)
+    //{
+    //    Container::List<ResponseBase*>* temp = consumer_responses;
+    //    consumer_responses = producer_responses;
+    //    uniqueLock.lock();
+    //    while (!hasNewResponse)
+    //    {
+    //        responseCv.wait(uniqueLock, [this] { return hasNewResponse; });
+    //    }
 
-        producer_responses = temp;
-        hasNewResponse = false;
-        uniqueLock.unlock();
+    //    producer_responses = temp;
+    //    hasNewResponse = false;
+    //    uniqueLock.unlock();
 
-        for (auto respIt = consumer_responses->begin(); respIt != consumer_responses->end(); ++respIt)
-        {
-            buffer.offset = 0;
-            ResponseBase& resp = **respIt;
-            int32 buffer_bytes = resp.Pack(buffer);
-            for (auto connIt = resp.conns.begin(); connIt != resp.conns.end(); ++connIt)
-            {
-                int32 sentBytes = 0;
-                while (sentBytes < buffer_bytes)
-                {
-                    // TODO: Use async to send
-                    ssize_t result = ::send((*connIt)->sock, sendBuf + sentBytes, buffer_bytes - sentBytes, 0);
-                    if (result == SOCKET_ERROR)
-                    {
-                        // TODO: Process error conditions.
-                        Logging::Error("[TcpListener] Send failed. ErrorCode: %d", errno);
-                        break;
-                    }
-                    sentBytes += result;
-                }
-            }
-        }
-        consumer_responses->clear();
-    }
+    //    for (auto respIt = consumer_responses->begin(); respIt != consumer_responses->end(); ++respIt)
+    //    {
+    //        buffer.offset = 0;
+    //        ResponseBase& resp = **respIt;
+    //        int32 buffer_bytes = resp.Pack(buffer);
+    //        for (auto connIt = resp.conns.begin(); connIt != resp.conns.end(); ++connIt)
+    //        {
+    //            int32 sentBytes = 0;
+    //            while (sentBytes < buffer_bytes)
+    //            {
+    //                // TODO: Use async to send
+    //                ssize_t result = ::send((*connIt)->sock, sendBuf + sentBytes, buffer_bytes - sentBytes, 0);
+    //                if (result == SOCKET_ERROR)
+    //                {
+    //                    // TODO: Process error conditions.
+    //                    Logging::Error("[TcpListener] Send failed. ErrorCode: %d", errno);
+    //                    break;
+    //                }
+    //                sentBytes += result;
+    //            }
+    //        }
+    //    }
+    //    consumer_responses->clear();
+    //}
 }
 
 } // namespace Hypnos

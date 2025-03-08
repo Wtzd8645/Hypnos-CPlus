@@ -111,7 +111,7 @@ inline void UdpListener::Listen()
 
 inline void UdpListener::Dispatch()
 {
-    Container::Vector<RequestBase*>* temp = consumer_requests;
+    Container::List<RequestBase*>* temp = consumer_requests;
     consumer_requests = producer_requests;
     request_mutex.lock();
     producer_requests = temp;
@@ -206,7 +206,7 @@ inline void UdpListener::Receive()
         // }
         // 
         // // TODO: Optimize packet process.
-        // if (!requestProducer->Create(receiveBuf + sizeof(PacketLengthSize), *connId))
+        // if (!requestProducer->Create(receiveBuf + sizeof(packet_size), *connId))
         // {
         //     Logging::Error("[UdpListener] Create resquest failed.");
         //}
@@ -215,44 +215,44 @@ inline void UdpListener::Receive()
 
 void UdpListener::SendResponses()
 {
-    char sendBuf[maxPacketBytes * 16];
-    char compressBuf[maxPacketBytes];
-    char encryptBuf[maxPacketBytes];
-    PacketBuffer buffer{ sendBuf, 0 };
-    int32 addrLen = sizeof(sockaddr);
-    UniqueLock<Mutex> lock(responseLocker, std::defer_lock);
+    //char sendBuf[maxPacketBytes * 16];
+    //char compressBuf[maxPacketBytes];
+    //char encryptBuf[maxPacketBytes];
+    //PacketBuffer buffer{ sendBuf, 0 };
+    //int32 addrLen = sizeof(sockaddr);
+    //UniqueLock<Mutex> lock(responseLocker, std::defer_lock);
 
-    while (true)
-    {
-        Container::Vector<ResponseBase*>* temp = consumer_responses;
-        consumer_responses = producer_responses;
-        responseCv.wait(lock, [this] { return hasNewResponse; });
+    //while (true)
+    //{
+    //    Container::List<ResponseBase*>* temp = consumer_responses;
+    //    consumer_responses = producer_responses;
+    //    responseCv.wait(lock, [this] { return hasNewResponse; });
 
-        producer_responses = temp;
-        hasNewResponse = false;
-        responseLocker.unlock();
+    //    producer_responses = temp;
+    //    hasNewResponse = false;
+    //    responseLocker.unlock();
 
-        for (auto respIt = consumer_responses->begin(); respIt != consumer_responses->end(); ++respIt)
-        {
-            ResponseBase* resp = *respIt;
-            int32 packetBytes = (*respIt)->Pack(buffer);
-            for (auto connIt = resp->conns.begin(); connIt != resp->conns.end(); ++connIt)
-            {
-                int32 sentBytes = 0;
-                while (sentBytes < packetBytes) // TODO: Is UDP need to do while send?
-                {
-                    ssize_t result = ::sendto(listenSocket, sendBuf + sentBytes, packetBytes - sentBytes, 0, reinterpret_cast<sockaddr*>(&(*connIt)->addr), addrLen);
-                    if (result == SOCKET_ERROR)
-                    {
-                        Logging::Error("[UdpListener] Send failed. ErrorCode: %d", errno);
-                        break;
-                    }
-                    sentBytes += result;
-                }
-            }
-        }
-        consumer_responses->clear();
-    }
+    //    for (auto respIt = consumer_responses->begin(); respIt != consumer_responses->end(); ++respIt)
+    //    {
+    //        ResponseBase* resp = *respIt;
+    //        int32 packetBytes = (*respIt)->Pack(buffer);
+    //        for (auto connIt = resp->conns.begin(); connIt != resp->conns.end(); ++connIt)
+    //        {
+    //            int32 sentBytes = 0;
+    //            while (sentBytes < packetBytes) // TODO: Is UDP need to do while send?
+    //            {
+    //                ssize_t result = ::sendto(listenSocket, sendBuf + sentBytes, packetBytes - sentBytes, 0, reinterpret_cast<sockaddr*>(&(*connIt)->addr), addrLen);
+    //                if (result == SOCKET_ERROR)
+    //                {
+    //                    Logging::Error("[UdpListener] Send failed. ErrorCode: %d", errno);
+    //                    break;
+    //                }
+    //                sentBytes += result;
+    //            }
+    //        }
+    //    }
+    //    consumer_responses->clear();
+    //}
 }
 
 } // namespace Hypnos

@@ -57,7 +57,7 @@ private:
     struct stat fdStat;
 };
 
-template<class T>
+template<typename T>
 struct NArray
 {
 public:
@@ -83,7 +83,7 @@ private:
     int32 length;
 };
 
-template<class T>
+template<typename T>
 struct NStructArray
 {
 public:
@@ -137,7 +137,7 @@ private:
     int32* pointer;
 };
 
-template<class T>
+template<typename T>
 struct NReferenceArray
 {
 public:

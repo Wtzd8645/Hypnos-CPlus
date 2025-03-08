@@ -3,8 +3,7 @@
 #include "NetworkConfig.hpp"
 #include "NetworkDefinition.hpp"
 #include "SocketServerBase.hpp"
-#include <Hypnos-Core/Container.hpp>
-#include <Hypnos-Core/Threads/MPSC/RingBuffer.hpp>
+#include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Mediation.hpp>
 
 namespace Blanketmen {
@@ -27,8 +26,8 @@ private:
 public:
     void Initialize(NetworkConfig* config);
     void Release();
-    void Listen(SocketId sockId);
-    void Shutdown(SocketId sockId);
+    void Listen(ServerId sockId);
+    void Shutdown(ServerId sockId);
 
     inline void Update()
     {
@@ -38,23 +37,23 @@ public:
         }
     }
 
-    inline void Send(SocketId sockId, ResponseBase* resp)
+    inline void Send(ServerId sockId, ResponseBase* resp)
     {
         servers[sockId]->Send(resp);
     }
 
-    inline void Register(SocketId sockId, RequestId msgId, EventHandler<RequestBase*>* handler)
+    inline void Register(ServerId sockId, RequestId msgId, EventHandler<RequestBase*>* handler)
     {
         servers[sockId]->Register(msgId, handler);
     }
 
-    inline void Unregister(SocketId sockId, RequestId msgId)
+    inline void Unregister(ServerId sockId, RequestId msgId)
     {
         servers[sockId]->Unregister(msgId);
     }
 
 private:
-    Container::Vector<SocketServerBase*> servers;
+    Container::List<SocketServerBase*> servers;
 };
 
 } // namespace Hypnos
