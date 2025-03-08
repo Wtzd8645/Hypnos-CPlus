@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Hypnos-Core/Container/Queue.hpp>
-#include <Hypnos-Core/Type.hpp>
+#include <Hypnos-Core/Types.hpp>
 #include <list>
 
 #if defined _WIN32

@@ -2,7 +2,7 @@
 
 #include "RequestBase.hpp"
 #include "ResponseBase.hpp"
-#include <Hypnos-Core/Mediation.hpp>
+#include <Hypnos-Core/Mediation/EventDispatcher.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

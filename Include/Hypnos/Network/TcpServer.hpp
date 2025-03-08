@@ -8,8 +8,7 @@
 #include <Hypnos-Core/Cache/SPSC/MmapBufferPool.hpp>
 #include <Hypnos-Core/Cache/SPSC/ObjectPool.hpp>
 #include <Hypnos-Core/Container/SPSC/RingBuffer.hpp>
-#include <Hypnos-Core/Threads.hpp>
-#include <atomic>
+#include <Hypnos-Core/System.hpp>
 
 #if defined _WIN32
 
@@ -35,9 +34,9 @@ public:
 
 private:
     Socket sock;
-    std::unique_ptr<Thread> io_thread;
-    std::atomic<bool> running;
-    alignas(64) std::atomic<bool> processing; // PERF: Change to state.
+    unique_ptr<Thread> io_thread;
+    Atomic<bool> running;
+    alignas(64) Atomic<bool> processing; // PERF: Change to state.
 
     io_uring io_ring;
     io_uring_params io_params;

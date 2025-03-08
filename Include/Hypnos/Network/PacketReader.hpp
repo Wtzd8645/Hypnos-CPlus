@@ -1,7 +1,8 @@
 #pragma once
 
 #include "NetworkDefinition.hpp"
-#include <Hypnos-Core/Encoding.hpp>
+#include <Hypnos-Core/Encoding/Base128Varints.hpp>
+#include <Hypnos-Core/Encoding/ZigZag.hpp>
 #include <cstring>
 
 namespace Blanketmen {

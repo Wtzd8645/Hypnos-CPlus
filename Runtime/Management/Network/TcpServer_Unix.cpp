@@ -2,8 +2,7 @@
 #include "Hypnos/Network/NetworkDefinition.hpp"
 #include "Hypnos/Network/TcpServer.hpp"
 #include <Hypnos-Core/Memory/Memory.hpp>
-#include <Hypnos-Core/Threads.hpp>
-#include <cstddef>
+#include <cstring>
 #include <liburing.h>
 #include <netinet/in.h>
 #include <stdexcept>
@@ -20,7 +19,7 @@ TcpServer::TcpServer() :
     io_send_buf_pool(2048, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB, 8192),
     events(1024), request_factory(nullptr), requests(8192), responses(8192)
 {
-    memset(&io_params, 0, sizeof(io_params));
+    std::memset(&io_params, 0, sizeof(io_params));
     io_params.flags = IORING_SETUP_SQPOLL | IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN; // TODO: Make configurable.
 
     buf_meta_offset = Memory::AlignUp(2048, alignof(BufferMetadata));
@@ -84,7 +83,7 @@ void TcpServer::Initialize()
         // Allocate and add buffers to recv buf ring. 
         io_uring_buf_ring_init(io_recv_buf_ring);
         io_recv_buf_mask = io_uring_buf_ring_mask(buf_num);
-        for (size_t i = 0; i < buf_num; ++i)
+        for (int32 i = 0; i < buf_num; ++i)
         {
             io_uring_buf_ring_add(io_recv_buf_ring, io_recv_buf_pool[i], buf_size, i, io_recv_buf_mask, i);
         }

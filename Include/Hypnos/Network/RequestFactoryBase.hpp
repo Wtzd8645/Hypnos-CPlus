@@ -1,7 +1,7 @@
 #pragma once
 
 #include "RequestBase.hpp"
-#include <Hypnos-Core/Type.hpp>
+#include <Hypnos-Core/Types.hpp>
 #include <mutex>
 
 namespace Blanketmen {

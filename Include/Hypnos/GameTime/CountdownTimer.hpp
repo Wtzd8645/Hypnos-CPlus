@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GameTimerBase.hpp"
-#include <Hypnos-Core/Mediation.hpp>
+#include <Hypnos-Core/Mediation/Delegate.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GameTimeDefinition.hpp"
-#include <Hypnos-Core/Type.hpp>
+#include <Hypnos-Core/Types.hpp>
 #include <chrono>
 #include <memory>
 

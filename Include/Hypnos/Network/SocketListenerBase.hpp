@@ -17,8 +17,8 @@
 
 #include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Container/UnorderedMap.hpp>
-#include <Hypnos-Core/Mediation.hpp>
-#include <Hypnos-Core/Threads.hpp>
+#include <Hypnos-Core/Mediation/Delegate.hpp>
+#include <Hypnos-Core/System.hpp>
 #include <Hypnos/Logging.hpp>
 #include "NetworkDefinition.hpp"
 #include "NetworkConfig.hpp"
