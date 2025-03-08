@@ -12,7 +12,7 @@ class RequestFactoryBase
 public:
     virtual ~RequestFactoryBase() = default;
 
-    virtual RequestBase* Create(char_ptr buf, Connection* conn) = 0;
+    virtual RequestBase* Create(uint8* buf, Connection* conn) = 0;
     virtual void Recycle(RequestBase* req) = 0;
 };
 

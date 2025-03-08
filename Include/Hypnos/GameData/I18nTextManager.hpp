@@ -38,24 +38,24 @@ private:
     }
 
 public:
-    inline const_char_ptr CurrentLanguage() const noexcept { return currentLanguage; }
+    inline const char8* CurrentLanguage() const noexcept { return currentLanguage; }
 
-    void SetI18nTextDirectoryPath(const_char_ptr i18nTextDirPath);
-    void SwitchLanguage(const_char_ptr langName);
+    void SetI18nTextDirectoryPath(const char8* i18nTextDirPath);
+    void SwitchLanguage(const char8* langName);
     string GetText(uint32 id);
 
 private:
-    const_char_ptr FileExt = ".dat";
-    const_char_ptr I18nFilePrefix = "I18nText_";
+    const char8* FileExt = ".dat";
+    const char8* I18nFilePrefix = "I18nText_";
     const int32 TextCountSize = 4;
     const int32 KeySize = 4;
     const int32 InfoTableEntrySize = 8;
 
-    char_ptr i18nTextDirPath;
-    char_ptr currentLanguage;
+    char8* i18nTextDirPath;
+    char8* currentLanguage;
 
     int32 dataFd = -1;
-    char_ptr i18nMmapPtr = nullptr;
+    char8* i18nMmapPtr = nullptr;
     struct stat fdStat;
 };
 

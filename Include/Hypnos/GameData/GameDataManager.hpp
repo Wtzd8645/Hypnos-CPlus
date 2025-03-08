@@ -38,10 +38,10 @@ private:
     }
 
 public:
-    void CreateMmap(const_char_ptr dataFilePath);
-    int32 GetKeyTableOffset(const_char_ptr tableName);
-    char_ptr GetDataPointer(int32 keyTableOffset, int32 key);
-    char_ptr GetDataPointer(int32 offset);
+    void CreateMmap(const char8* dataFilePath);
+    int32 GetKeyTableOffset(const char8* tableName);
+    uint8* GetDataPointer(int32 keyTableOffset, int32 key);
+    uint8* GetDataPointer(int32 offset);
     string GetString(int32 offset);
 
 private:
@@ -53,7 +53,7 @@ private:
     const int32 KeyTableEntrySize = 12;
 
     int32 dataFd = -1;
-    char_ptr dataMmapPtr = nullptr;
+    uint8* dataMmapPtr = nullptr;
     struct stat fdStat;
 };
 
@@ -99,7 +99,7 @@ public:
         return T(pointer + index * structSize);
     }
 
-    NStructArray(char_ptr ptr, int32 size, int32 len)
+    NStructArray(uint8* ptr, int32 size, int32 len)
     {
         pointer = ptr;
         structSize = size;
@@ -108,7 +108,7 @@ public:
 
 private:
     int32 length;
-    char_ptr pointer;
+    uint8* pointer;
     int32 structSize;
 };
 

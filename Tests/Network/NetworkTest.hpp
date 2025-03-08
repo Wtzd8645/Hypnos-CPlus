@@ -9,9 +9,9 @@ namespace Tests {
 class RequestProducer : public RequestFactoryBase
 {
 public:
-    RequestBase* Create(char_ptr buf, Connection* conn) override
+    RequestBase* Create(uint8* buf, Connection* conn) override
     {
-        uint16 msgId = *reinterpret_cast<uint16_ptr>(buf);
+        uint16 msgId = *reinterpret_cast<uint16*>(buf);
         RequestBase* request;
         switch (msgId)
         {
