@@ -9,22 +9,6 @@ namespace Hypnos {
 
 class SocketServerBase : public EventDispatcher<uint16, RequestBase*>
 {
-protected:
-    static constexpr int32 IO_RECV_BUF_GROUP = 0;
-
-    enum class SocketOp : int8
-    {
-        ACPT,
-        RECV,
-        SEND
-    };
-
-    struct EventArg
-    {
-        SocketOp op;
-        Connection* conn;
-    };
-
 public:
     virtual ~SocketServerBase() = default;
 

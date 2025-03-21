@@ -28,6 +28,12 @@ typedef uint16 RequestId;
 
 constexpr const int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
 
+enum class ConnectionEventId : int8
+{
+    CONNECT,
+    DISCONNECT
+};
+
 #if defined _WIN32
 typedef SOCKET Socket;
 constexpr const char* DEFAULT_PORT = "27015";
@@ -46,27 +52,21 @@ enum TransportProtocol
     RUDP = 3
 };
 
-struct ConnectionEvent
-{
-    ServerId sockId;
-    ServerEventId evtId;
-};
-
 struct PacketContext
 {
     uint8* buffer;
     packet_size pending_bytes = 0;
     packet_size processed_bytes = 0;
-    Container::Queue<uint8*> next_buffers;
 };
 
 struct Connection
 {
     Socket sock = INVALID_FD;
-    sockaddr_storage addr;
-    socklen_t addr_len = sizeof(sockaddr_storage);
+    bool recving = false;
+    bool sending = false;
     PacketContext recv_ctx;
     PacketContext send_ctx;
+    Container::Queue<uint8*> pending_responses;
 };
 
 struct ReceiveMetadata
@@ -82,7 +82,7 @@ struct SendMetadata
 {
     inline static SendMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<SendMetadata*>(buffer + offset); }
 
-    int32 ref_count;
+    int32 conn_count;
     packet_size size;
 };
 
@@ -90,6 +90,17 @@ union BufferMetadata
 {
     ReceiveMetadata recv_meta;
     SendMetadata send_meta;
+};
+
+struct ConnectionEvent
+{
+    ConnectionEventId evtId;
+    Connection* conn;
+};
+
+struct ConnectionEventIdHash
+{
+    std::size_t operator()(const ConnectionEventId& id) const { return static_cast<std::size_t>(id); }
 };
 
 struct MessageHeader
@@ -100,12 +111,3 @@ struct MessageHeader
 
 } // namespace Hypnos
 } // namespace Blanketmen
-
-template<>
-struct std::hash<Blanketmen::Hypnos::Connection>
-{
-    std::size_t operator()(Blanketmen::Hypnos::Connection const& conn) const noexcept
-    {
-        return std::hash<Blanketmen::Hypnos::Socket>{ }(conn.sock);
-    }
-};
