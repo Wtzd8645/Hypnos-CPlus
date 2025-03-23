@@ -5,7 +5,7 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& reqestHandlerMap) :
+TcpListener::TcpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, MultiDelegate<RequestBase&>*>& reqestHandlerMap) :
     SocketListenerBase(config, reqestHandlerMap)
 {
     // Create socket.
@@ -122,12 +122,12 @@ inline void TcpListener::Dispatch()
 
     for (auto it = consumer_requests->begin(); it != consumer_requests->end(); ++it)
     {
-        Delegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
+        /*MultiDelegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
         if (handler != nullptr)
         {
             (*handler)(**it);
             delete *it;
-        }
+        }*/
     }
     consumer_requests->clear();
 }
@@ -219,7 +219,7 @@ inline void TcpListener::Accept()
         if (conn == nullptr)
         {
             conn = new Connection();
-            conn->recv_ctx.buffer = new uint8[maxPacketBytes * 4];
+            //conn->recv_ctx.buffer = new uint8[maxPacketBytes * 4];
             connection_map[sock] = conn;
         }
         //conn->sock = sock;

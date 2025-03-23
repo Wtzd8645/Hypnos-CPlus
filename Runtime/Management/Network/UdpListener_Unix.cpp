@@ -5,7 +5,7 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& reqHandlerDict) :
+UdpListener::UdpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, MultiDelegate<RequestBase&>*>& reqHandlerDict) :
     SocketListenerBase(config, reqHandlerDict),
     receiveBuf(new char[maxPacketBytes])
 {
@@ -119,11 +119,11 @@ inline void UdpListener::Dispatch()
 
     for (auto it = consumer_requests->begin(); it != consumer_requests->end(); ++it)
     {
-        Delegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
+        /*MultiDelegate<RequestBase&>* handler = requestHandlerMap[(*it)->header.msgId];
         if (handler != nullptr)
         {
             (*handler)(**it);
-        }
+        }*/
     }
     consumer_requests->clear();
 }

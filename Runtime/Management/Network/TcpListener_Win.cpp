@@ -4,7 +4,7 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictionary<uint16, Delegate<RequestBase*>*> reqHandlerDict) :
+TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictionary<uint16, MultiDelegate<RequestBase*>*> reqHandlerDict) :
     iocpThreads(8),
     maxConnections(maxConns),
     request_factory(requestFcty),
@@ -127,7 +127,7 @@ inline void TcpListener::Dispatch()
     ::EnterCriticalSection(&request_mutex);
     for (auto it = consumer_requests.begin(); it != consumer_requests.end(); ++it)
     {
-        Delegate<RequestBase*>* handler = requestHandlerDict[(*it)->header.msgId];
+        MultiDelegate<RequestBase*>* handler = requestHandlerDict[(*it)->header.msgId];
         if (handler == nullptr)
         {
             continue;

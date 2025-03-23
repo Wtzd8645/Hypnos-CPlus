@@ -8,7 +8,7 @@ namespace Hypnos {
 class UdpListener : public SocketListenerBase
 {
 public:
-    UdpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& reqHandlerDict);
+    UdpListener(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, MultiDelegate<RequestBase&>*>& reqHandlerDict);
     ~UdpListener();
 
     inline void Listen() override;

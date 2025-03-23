@@ -8,6 +8,21 @@
 namespace Blanketmen {
 namespace Hypnos {
 
+template<typename T>
+inline bool Read(const uint8_t* buffer, size_t size, size_t& offset, T& out)
+{
+    static_assert(std::is_trivially_copyable<T>::value, "Read<T>: T must be trivially copyable");
+
+    if (offset + sizeof(T) > size)
+    {
+        return false;
+    }
+
+    std::memcpy(&out, buffer + offset, sizeof(T));
+    offset += sizeof(T);
+    return true;
+}
+
 class PacketReader
 {
 public:

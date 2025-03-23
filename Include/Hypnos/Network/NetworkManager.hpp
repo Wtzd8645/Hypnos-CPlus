@@ -4,7 +4,7 @@
 #include "NetworkDefinition.hpp"
 #include "SocketServerBase.hpp"
 #include <Hypnos-Core/Container/List.hpp>
-#include <Hypnos-Core/Mediation/EventDispatcher.hpp>
+#include <Hypnos-Core/Mediation/EventHandlerBase.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -42,7 +42,7 @@ public:
         servers[sockId]->Send(resp);
     }
 
-    inline void Register(ServerId sockId, RequestId msgId, EventHandler<RequestBase*>* handler)
+    inline void Register(ServerId sockId, RequestId msgId, EventHandlerBase<RequestBase*>* handler)
     {
         servers[sockId]->Register(msgId, handler);
     }

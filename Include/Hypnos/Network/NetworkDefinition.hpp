@@ -21,12 +21,13 @@ constexpr const int32 MAX_JUMBO_MTU = 9000; // Jumbo Frames MTU.
 constexpr const int32 MAX_LOOPBACK_MTU = 65536; // Loopback (lo Interface) MTU.
 constexpr const int32 MIN_IPV6_MTU = 1280; // IPv6 (Minimum) MTU.
 
+constexpr const int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
+constexpr const int32 MAX_BUFFER_SIZE = 2048;
+
 typedef int16 packet_size;
 
 typedef uint8 ServerId, ServerEventId;
 typedef uint16 RequestId;
-
-constexpr const int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
 
 enum class ConnectionEventId : int8
 {
@@ -52,55 +53,57 @@ enum TransportProtocol
     RUDP = 3
 };
 
-struct PacketContext
+struct recv_context
 {
-    uint8* buffer;
+    uint8 buffer[MAX_BUFFER_SIZE];
+    uint8 packet_bytes = 0;
+    uint8 waiting_bytes = sizeof(packet_size);
+    packet_size received_bytes = 0;
+};
+
+struct send_context
+{
+    uint8* buffer = nullptr;
     packet_size pending_bytes = 0;
     packet_size processed_bytes = 0;
+    Container::Queue<uint8*> pending_responses;
 };
 
 struct Connection
 {
     Socket sock = INVALID_FD;
-    bool recving = false;
-    bool sending = false;
-    PacketContext recv_ctx;
-    PacketContext send_ctx;
-    Container::Queue<uint8*> pending_responses;
+    uint8 version = 0;
+    recv_context recv_ctx;
+    send_context send_ctx;
 };
 
-struct ReceiveMetadata
+struct ConnectionHandle
 {
-    inline static ReceiveMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<ReceiveMetadata*>(buffer + offset); }
-
     Connection* conn;
-    int32 bid;
-    packet_size size;
-};
-
-struct SendMetadata
-{
-    inline static SendMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<SendMetadata*>(buffer + offset); }
-
-    int32 conn_count;
-    packet_size size;
+    uint8 version;
 };
 
 union BufferMetadata
 {
-    ReceiveMetadata recv_meta;
-    SendMetadata send_meta;
+    inline static BufferMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<BufferMetadata*>(buffer + offset); }
+
+    struct
+    {
+        Connection* conn;
+        int32 bid;
+        packet_size size;
+    } recv;
+    struct
+    {
+        int32 conn_count;
+        packet_size size;
+    } send;
 };
 
 struct ConnectionEvent
 {
     ConnectionEventId evtId;
     Connection* conn;
-};
-
-struct ConnectionEventIdHash
-{
-    std::size_t operator()(const ConnectionEventId& id) const { return static_cast<std::size_t>(id); }
 };
 
 struct MessageHeader

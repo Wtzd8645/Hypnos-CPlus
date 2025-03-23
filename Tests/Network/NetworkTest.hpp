@@ -22,7 +22,7 @@ public:
         }
 
         request->conn = conn;
-        request->header.msgId = msgId;
+        //request->header.msgId = msgId;
         request->Unpack(buf + sizeof(msgId));
         return request;
     }

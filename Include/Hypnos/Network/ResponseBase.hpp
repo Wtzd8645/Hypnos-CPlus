@@ -12,7 +12,7 @@ namespace Hypnos {
 class ResponseBase
 {
 public:
-    Container::ForwardListEx<Connection*> conns;
+    Container::ForwardListEx<ConnectionHandle> conns;
 
     uint8* buffer;
     packet_size length;

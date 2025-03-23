@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GameTimerBase.hpp"
-#include <Hypnos-Core/Mediation/Delegate.hpp>
+#include <Hypnos-Core/Mediation/MultiDelegate.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -9,8 +9,8 @@ namespace Hypnos {
 class LapTimer: public GameTimerBase
 {
 public:
-    Delegate<LapTimer&> OnLapTimeUp;
-    Delegate<LapTimer&> OnTimeUp;
+    MultiDelegate<LapTimer&> OnLapTimeUp;
+    MultiDelegate<LapTimer&> OnTimeUp;
 
     void Set(float32 time,int32 laps);
     void Reset() override;

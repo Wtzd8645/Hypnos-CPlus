@@ -17,7 +17,7 @@
 
 #include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Container/UnorderedMap.hpp>
-#include <Hypnos-Core/Mediation/Delegate.hpp>
+#include <Hypnos-Core/Mediation/MultiDelegate.hpp>
 #include <Hypnos-Core/System.hpp>
 #include <Hypnos/Logging.hpp>
 #include "NetworkDefinition.hpp"
@@ -31,7 +31,7 @@ namespace Hypnos {
 class SocketListenerBase
 {
 public:
-    SocketListenerBase(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap) :
+    SocketListenerBase(ConnectionListenerConfig& config, Container::UnorderedMap<uint16, MultiDelegate<RequestBase&>*>& requestHandlerMap) :
         maxConnections(config.maxConnections),
         maxPacketBytes(config.maxPacketBytes),
         request_factory(config.request_factory),
@@ -112,7 +112,7 @@ protected:
     Container::List<RequestBase*>* producer_requests;
     Container::List<RequestBase*>* consumer_requests;
     RequestFactoryBase* request_factory;
-    Container::UnorderedMap<uint16, Delegate<RequestBase&>*>& requestHandlerMap;
+    Container::UnorderedMap<uint16, MultiDelegate<RequestBase&>*>& requestHandlerMap;
 
     Thread* sendThread;
     Mutex responseLocker;

@@ -12,8 +12,6 @@ class RequestBase
 public:
     Connection* conn;
 
-    MessageHeader header;
-
     virtual ~RequestBase() { }
 
     void Unpack(uint8* buf)
