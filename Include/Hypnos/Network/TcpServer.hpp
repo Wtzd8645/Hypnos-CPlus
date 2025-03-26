@@ -2,13 +2,14 @@
 
 #include "Hypnos/Network/NetworkDefinition.hpp"
 #include "Hypnos/Network/SocketServerBase.hpp"
-#include "RequestProcessorBase.hpp"
+#include "RequestPoolBase.hpp"
 #include "ResponsePoolBase.hpp"
 #include <Hypnos-Core/Cache/IndexedMmapBufferPool.hpp>
 #include <Hypnos-Core/Cache/ObjectPool.hpp>
 #include <Hypnos-Core/Cache/SPSC/BufferPool.hpp>
 #include <Hypnos-Core/Cache/SPSC/MmapBufferPool.hpp>
 #include <Hypnos-Core/Cache/SPSC/ObjectPool.hpp>
+#include <Hypnos-Core/Container/ForwardList.hpp>
 #include <Hypnos-Core/Container/Map.hpp>
 #include <Hypnos-Core/Container/SPSC/RingBuffer.hpp>
 #include <Hypnos-Core/Mediation/EventHandlerBase.hpp>
@@ -29,25 +30,11 @@ public:
 
     void Listen() override;
     void Dispatch() override;
-    void Send(ResponseBase* resp) override;
+    void Close(Container::List<ConnectionHandle>* conn_handles) override;
+    void Send(Container::List<ConnectionHandle>* conn_handles, ResponseBase* resp) override;
 
 private:
     static constexpr int32 IO_RECV_BUF_GROUP = 0;
-
-    enum class socket_operation : int8
-    {
-        ACPT,
-        RECV,
-        POLL,
-        SEND
-    };
-
-    struct socket_event_args
-    {
-        socket_operation op;
-        uint8 version;
-        Connection* conn;
-    };
 
     Socket sock;
     int32 send_efd;
@@ -72,21 +59,23 @@ private:
     Container::SPSC::RingBuffer<ConnectionEvent> conn_events;
     Container::UnorderedMap<ConnectionEventId, EventHandlerBase<Connection*>*> conn_event_handlers;
 
-    Container::SPSC::RingBuffer<uint8*> requests;
-    RequestProcessorBase* request_processor;
+    int32 buf_count = 0;
+    Container::SPSC::RingBuffer<RequestBase*> requests;
+    RequestPoolBase* request_pool;
+    Container::List<EventHandlerBase<RequestBase*>*> request_handlers;
 
-    Container::SPSC::RingBuffer<ResponseBase*> responses;
+    Container::SPSC::RingBuffer<SocketOperationArgs> socket_op_args;
     ResponsePoolBase* response_pool;
 
     void ProcessEvents();
 
-    void Close(Connection* conn);
-    void Accept(socket_event_args* args);
-    void Receive(socket_event_args* args);
-    void Poll(socket_event_args* args);
-    void Send(socket_event_args* args, const void* buf, int32 len);
+    void CloseInternal(Connection* conn);
+    void AcceptInternal(socket_event_args* args);
+    void ReceiveInternal(socket_event_args* args);
+    void PollInternal(socket_event_args* args);
+    void SendInternal(socket_event_args* args, const void* buf, int32 len);
 
-    void OnCqeError(int err);
+    void OnCqeError(int32 err);
     void OnAccept(socket_event_args* args, int32 res, uint32 flags);
     void OnReceive(socket_event_args* args, int32 res, uint32 flags);
     void OnPoll(socket_event_args* args, int32 res, uint32 flags);

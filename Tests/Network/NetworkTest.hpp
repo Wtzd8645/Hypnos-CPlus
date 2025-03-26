@@ -21,7 +21,7 @@ public:
             default: return nullptr;
         }
 
-        request->conn = conn;
+        //request->conn = conn;
         //request->header.msgId = msgId;
         request->Unpack(buf + sizeof(msgId));
         return request;

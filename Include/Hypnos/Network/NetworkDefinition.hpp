@@ -1,8 +1,8 @@
 #pragma once
 
+#include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Container/Queue.hpp>
 #include <Hypnos-Core/Types.hpp>
-#include <list>
 
 #if defined _WIN32
 
@@ -45,19 +45,27 @@ constexpr const int SOCKET_ERROR = -1;
 constexpr const uint16 DEFAULT_PORT = 27015;
 #endif
 
-enum TransportProtocol
+enum TransportProtocol : int8
 {
-    LocalSimulation = 0,
+    LOCAL_SIMULATION = 0,
     TCP = 1,
     UDP = 2,
     RUDP = 3
 };
 
+enum socket_operation : int8
+{
+    ACPT,
+    RECV,
+    POLL,
+    SEND
+};
+
 struct recv_context
 {
     uint8 buffer[MAX_BUFFER_SIZE];
-    uint8 packet_bytes = 0;
-    uint8 waiting_bytes = sizeof(packet_size);
+    packet_size packet_bytes = 0;
+    packet_size waiting_bytes = sizeof(packet_size);
     packet_size received_bytes = 0;
 };
 
@@ -81,16 +89,19 @@ struct ConnectionHandle
 {
     Connection* conn;
     uint8 version;
+    
+    inline operator Connection* () { return conn; }
 };
 
-union BufferMetadata
+union buffer_metadata
 {
-    inline static BufferMetadata& Get(uint8* buffer, int32 offset) { return *reinterpret_cast<BufferMetadata*>(buffer + offset); }
+    inline static buffer_metadata& get(uint8* buffer, int32 offset) { return *reinterpret_cast<buffer_metadata*>(buffer + offset); }
 
     struct
     {
-        Connection* conn;
+        ConnectionHandle conn_handle;
         int32 bid;
+        packet_size offest;
         packet_size size;
     } recv;
     struct
@@ -98,6 +109,22 @@ union BufferMetadata
         int32 conn_count;
         packet_size size;
     } send;
+};
+
+struct socket_event_args
+{
+    Connection* conn;
+    uint8 version;
+    socket_operation op;
+};
+
+struct SocketOperationArgs
+{
+    static const int32 MAX_PACKET_SIZE = Hypnos::MAX_PACKET_SIZE;
+
+    Container::List<ConnectionHandle>* conn_handles;
+    uint8* buffer;
+    packet_size length;
 };
 
 struct ConnectionEvent

@@ -37,19 +37,19 @@ public:
         }
     }
 
-    inline void Send(ServerId sockId, ResponseBase* resp)
+    inline void Send(ServerId id, Container::List<ConnectionHandle>* conn_handles, ResponseBase* resp)
     {
-        servers[sockId]->Send(resp);
+        servers[id]->Send(conn_handles, resp);
     }
 
-    inline void Register(ServerId sockId, RequestId msgId, EventHandlerBase<RequestBase*>* handler)
+    inline void Register(ServerId id, RequestId gid, EventHandlerBase<RequestBase*>* handler)
     {
-        servers[sockId]->Register(msgId, handler);
+        servers[id]->Register(gid, handler);
     }
 
-    inline void Unregister(ServerId sockId, RequestId msgId)
+    inline void Unregister(ServerId id, RequestId gid)
     {
-        servers[sockId]->Unregister(msgId);
+        servers[id]->Unregister(gid);
     }
 
 private:

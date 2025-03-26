@@ -11,7 +11,7 @@ class ResponsePoolBase
 public:
     virtual ~ResponsePoolBase() = default;
 
-    virtual ResponseBase* Acquire(uint16* id) = 0;
+    virtual ResponseBase* Acquire(uint16 gid, uint16 id) = 0;
     virtual void Release(ResponseBase* resp) = 0;
 };
 

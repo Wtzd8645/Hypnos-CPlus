@@ -10,7 +10,9 @@ namespace Hypnos {
 class RequestBase
 {
 public:
-    Connection* conn;
+    ConnectionHandle conn_handle;
+    uint16 gid;
+    uint16 id;
 
     virtual ~RequestBase() { }
 

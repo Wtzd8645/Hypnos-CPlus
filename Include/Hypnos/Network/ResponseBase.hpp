@@ -2,9 +2,6 @@
 
 #include "NetworkDefinition.hpp"
 #include "PacketWriter.hpp"
-#include <Hypnos-Core/Container/ForwardListEx.hpp>
-#include <Hypnos/Logging.hpp>
-#include <forward_list>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -12,43 +9,25 @@ namespace Hypnos {
 class ResponseBase
 {
 public:
-    Container::ForwardListEx<ConnectionHandle> conns;
-
-    uint8* buffer;
-    packet_size length;
-    
     virtual ~ResponseBase() = 0;
 
-    void Pack(uint8* buf, int32 cap)
+    // TODO: Check message size.
+    void Pack(SocketOperationArgs& args)
     {
-        buffer = buf;
+        buffer = args.buffer;
         offset = sizeof(packet_size);
-        PackHeader();
-        PackBody();
+        PackInternal();
 
-        // TODO: Compress
-        // TODO: Encrypt
-        length = offset;
+        args.length = offset - sizeof(packet_size);
         offset = 0;
-        //*(buffer) = 1;
-        byte a;
-        byte b;
-        byte c = a;
-
-        PacketWriter::WriteInt16(buffer, offset, length - sizeof(packet_size)); // TODO: Sholud header be included?
+        PacketWriter::WriteInt16(buffer, offset, args.length);
     }
 
 protected:
+    uint8* buffer;
     int32 offset;
 
-    MessageHeader header;
-
-    inline void PackHeader()
-    {
-        PacketWriter::WriteUInt16(buffer, offset, header.msgId);
-    }
-
-    virtual void PackBody() = 0;
+    virtual void PackInternal() = 0;
 };
 
 } // namespace Hypnos
