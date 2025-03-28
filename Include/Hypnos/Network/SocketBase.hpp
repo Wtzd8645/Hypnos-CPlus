@@ -1,12 +1,14 @@
 #pragma once
 
+#include "Hypnos/Network/NetworkDefinition.hpp"
+
 namespace Blanketmen {
 namespace Hypnos {
 
 class SocketBase
 {
 public:
-    static constexpr uint32 BUF_META_OFFSET = Memory::AlignUp(MAX_PACKET_SIZE, alignof(buffer_metadata));
+    static constexpr int32 BUF_META_OFFSET = Memory::AlignUp(MAX_PACKET_SIZE, alignof(buffer_metadata));
 
     SocketBase(io_uring_context& ctx) : sock_fd(INVALID_FD), version(0), io_ctx(ctx) { }
 

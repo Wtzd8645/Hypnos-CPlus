@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Hypnos/Network/NetworkDefinition.hpp"
+#include "Hypnos/Network/ConnectionPool.hpp"
 #include "Hypnos/Network/SocketServerBase.hpp"
 #include "RequestPoolBase.hpp"
 #include "ResponsePoolBase.hpp"
@@ -21,7 +22,7 @@ namespace Hypnos {
 class TcpServer : public SocketServerBase
 {
 public:
-    TcpServer(io_uring_context& ctx);
+    TcpServer(io_uring_context& ctx, size_t max_conns);
     ~TcpServer();
 
     void Start() override;
@@ -39,7 +40,7 @@ private:
     int32 sock_fd;
     alignas(64) Atomic<uint8> polling;
 
-    Cache::ObjectPool<Connection> connection_pool;
+    ConnectionPool connection_pool;
     Container::SPSC::RingBuffer<ConnectionEvent> conn_events;
     Container::UnorderedMap<ConnectionEventId, EventHandlerBase<Connection*>*> conn_event_handlers;
 
@@ -49,6 +50,7 @@ private:
 
     Container::SPSC::RingBuffer<SocketOperationArgs> socket_op_args;
     ResponsePoolBase* response_pool;
+
 
     void ProcessEvents();
 

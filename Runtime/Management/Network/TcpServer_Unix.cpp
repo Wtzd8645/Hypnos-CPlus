@@ -11,8 +11,8 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-TcpServer::TcpServer(io_uring_context& ctx) : SocketServerBase(ctx),
-    connection_pool(ctx.recv_buf_pool.Capacity()),
+TcpServer::TcpServer(io_uring_context& ctx, size_t max_conns) : SocketServerBase(ctx),
+    connection_pool(max_conns),
     conn_events(8192),
     conn_event_handlers(2),
     requests(8192),
@@ -83,6 +83,16 @@ void TcpServer::Stop()
         Logging::Error("[TcpSocket] Socket is not running.");
         return;
     }
+
+    Logging::Info("[TcpSocket] Closing all active connections");
+    for (auto& conn : connection_pool)
+    {
+        if (conn.sock_fd > INVALID_FD)
+        {
+            CloseInternal(&conn);
+        }
+    }
+    connection_pool.Clear();
 
     shutdown(sock_fd, SHUT_RDWR);
     close(sock_fd);
@@ -165,14 +175,14 @@ void TcpServer::ProcessEvent(io_event_args* args, int32 res, uint32 flags)
 
 void TcpServer::CloseInternal(Connection* conn)
 {
-    if (conn->sock <= INVALID_FD)
+    if (conn->sock_fd <= INVALID_FD)
     {
         return;
     }
 
-    shutdown(conn->sock, SHUT_RDWR);
-    close(conn->sock);
-    conn->sock = INVALID_FD;
+    shutdown(conn->sock_fd, SHUT_RDWR);
+    close(conn->sock_fd);
+    conn->sock_fd = INVALID_FD;
     conn->version++;
 
     recv_context& recv_ctx = conn->recv_ctx;
@@ -183,29 +193,27 @@ void TcpServer::CloseInternal(Connection* conn)
     send_context& send_ctx = conn->send_ctx;
     send_ctx.pending_bytes = 0;
     send_ctx.processed_bytes = 0;
-
-    if (send_ctx.buffer != nullptr)
+    uint8* buf = send_ctx.buffer;
+    while (buf != nullptr)
     {
-        auto& send_meta = buffer_metadata::get(send_ctx.buffer, BUF_META_OFFSET).send;
-        if (--send_meta.conn_count == 0)
-        {
-            io_ctx.send_buf_pool.Push(send_ctx.buffer);
-        }
-        send_ctx.buffer = nullptr;
-    }
-
-    while (!send_ctx.pending_responses.empty())
-    {
-        uint8* buf = send_ctx.pending_responses.front();
         auto& send_meta = buffer_metadata::get(buf, BUF_META_OFFSET).send;
-        if (--send_meta.conn_count <= 0)
+        if (--send_meta.conn_count == 0)
         {
             io_ctx.send_buf_pool.Push(buf);
         }
-        send_ctx.pending_responses.pop();
+
+        if (send_ctx.pending_responses.empty())
+        {
+            buf = nullptr;
+        }
+        else
+        {
+            buf = send_ctx.pending_responses.front();
+            send_ctx.pending_responses.pop();
+        }
     }
 
-    connection_pool.Push(conn);
+    connection_pool.Release(conn);
 }
 
 inline void TcpServer::PollInternal(io_event_args* args)
@@ -232,7 +240,7 @@ inline void TcpServer::ReceiveInternal(io_event_args* args)
     io_uring_sqe_set_data(sqe, args);
     io_uring_sqe_set_flags(sqe, IOSQE_BUFFER_SELECT);
     sqe->buf_group = IO_RECV_BUF_GROUP;
-    io_uring_prep_recv_multishot(sqe, args->conn->sock, nullptr, 0, 0);
+    io_uring_prep_recv_multishot(sqe, args->conn->sock_fd, nullptr, 0, 0);
 }
 
 inline void TcpServer::SendInternal(io_event_args* args, const void* buf, int32 len)
@@ -241,7 +249,7 @@ inline void TcpServer::SendInternal(io_event_args* args, const void* buf, int32 
     args->conn_ver = args->conn->version;
     io_uring_sqe* sqe = io_uring_get_sqe(&io_ctx.ring);
     io_uring_sqe_set_data(sqe, args);
-    io_uring_prep_send(sqe, args->conn->sock, buf, len, 0);
+    io_uring_prep_send(sqe, args->conn->sock_fd, buf, len, 0);
 }
 
 void TcpServer::OnPoll(io_event_args* args, int32 res, uint32 flags)
@@ -327,8 +335,7 @@ void TcpServer::OnAccept(io_event_args* args, int32 res, uint32 flags)
     {
         io_event_args* recv_args = io_ctx.event_args_pool.Pop();
         recv_args->op = RECV;
-        recv_args->conn = connection_pool.Pop();
-        recv_args->conn->sock = res;
+        recv_args->conn = connection_pool.Aquire(res);
         ReceiveInternal(recv_args);
     }
 
@@ -371,7 +378,7 @@ void TcpServer::OnReceive(io_event_args* args, int32 res, uint32 flags)
     }
     else if (res <= 0)
     {
-        Logging::Info("[TcpSocket] Connection closed. Socket: %d, Error: %s", args->conn->sock, strerror(-res));
+        Logging::Info("[TcpSocket] Connection closed. Socket: %d, Error: %s", args->conn->sock_fd, strerror(-res));
         CloseInternal(args->conn);
 
         if ((flags & IORING_CQE_F_BUFFER) != 0)
@@ -506,7 +513,7 @@ void TcpServer::OnSend(io_event_args* args, int32 res, uint32 flags)
     }
     else if (res < 0)
     {
-        Logging::Info("[TcpSocket] Connection closed while sending. Op: %d, Error: %s)", args->conn->sock, strerror(-res));
+        Logging::Info("[TcpSocket] Connection closed while sending. Op: %d, Error: %s)", args->conn->sock_fd, strerror(-res));
         CloseInternal(args->conn); // PERF: Check if error is fatal.
 
         if ((flags & IORING_CQE_F_MORE) == 0)

@@ -5,6 +5,7 @@
 #include <Hypnos-Core/Cache/SPSC/MmapBufferPool.hpp>
 #include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Container/Queue.hpp>
+#include <Hypnos-Core/Memory/Memory.hpp>
 #include <Hypnos-Core/Types.hpp>
 #include <cstring>
 #include <liburing.h>
@@ -24,7 +25,6 @@ constexpr int32 MIN_IPV6_MTU = 1280; // IPv6 (Minimum) MTU.
 
 constexpr int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
 constexpr int32 MAX_BUFFER_SIZE = 2048;
-
 constexpr int32 IO_RECV_BUF_GROUP = 0;
 
 constexpr const int32 INVALID_FD = -1;
@@ -53,21 +53,12 @@ enum TransportProtocol : uint8
     RUDP = 3
 };
 
-enum socket_operation : uint8
+enum socket_op : uint8
 {
     ACPT,
     RECV,
     POLL,
     SEND
-};
-
-struct socket_handle
-{
-    uint8 id;
-    uint8 version;
-    int32 sock;
-
-    inline operator int32() { return sock; }
 };
 
 struct recv_context
@@ -86,15 +77,10 @@ struct send_context
     Container::Queue<uint8*> pending_responses;
 };
 
-struct Socket
-{
-    int32 sock_fd = INVALID_FD;
-    uint8 version = 0;
-};
-
 struct Connection
 {
-    int32 sock = INVALID_FD;
+    int32 index;
+    int32 sock_fd = INVALID_FD;
     uint8 version = 0;
     recv_context recv_ctx;
     send_context send_ctx;
@@ -110,7 +96,10 @@ struct ConnectionHandle
 
 union buffer_metadata
 {
-    inline static buffer_metadata& get(uint8* buffer, int32 offset) { return *reinterpret_cast<buffer_metadata*>(buffer + offset); }
+    inline static buffer_metadata& get(uint8* buf, uint32 offset)
+    {
+        return *reinterpret_cast<buffer_metadata*>(buf + offset);
+    }
 
     struct
     {
@@ -119,6 +108,7 @@ union buffer_metadata
         packet_size offest;
         packet_size size;
     } recv;
+
     struct
     {
         int32 conn_count;
@@ -130,7 +120,7 @@ struct io_event_args
 {
     Connection* conn;
     uint8 conn_ver;
-    socket_operation op;
+    socket_op op;
     int8 sock_id;
     int8 sock_ver;
 };
@@ -140,9 +130,11 @@ struct io_uring_context
     int32 efd;
     io_uring ring;
     io_uring_params ring_params;
+
     io_uring_buf_ring* recv_buf_ring;
     int32 recv_buf_mask;
     int32 recv_buf_count;
+
     Cache::IoUringBufferPool recv_buf_pool;
     Cache::SPSC::MmapBufferPool send_buf_pool;
     Cache::ObjectPool<io_event_args> event_args_pool;
