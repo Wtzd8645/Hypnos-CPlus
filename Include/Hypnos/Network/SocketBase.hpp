@@ -1,31 +1,27 @@
 #pragma once
 
-#include <fcntl.h>
-#include <ifaddrs.h>
-#include <arpa/inet.h>
-#include <net/if.h>
-#include <netinet/in.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/unistd.h>
-
 namespace Blanketmen {
 namespace Hypnos {
 
 class SocketBase
 {
 public:
-    SocketBase() = default;
+    static constexpr uint32 BUF_META_OFFSET = Memory::AlignUp(MAX_PACKET_SIZE, alignof(buffer_metadata));
+
+    SocketBase(io_uring_context& ctx) : sock_fd(INVALID_FD), version(0), io_ctx(ctx) { }
+
     virtual ~SocketBase() = default;
 
-    virtual void Listen() = 0;
-    virtual void Connect() = 0;
-    virtual void Disconnect() = 0;
-    virtual void Receive() = 0;
-    virtual void Send() = 0;
+    virtual void Start() = 0;
+    virtual void Stop() = 0;
+    virtual void Dispatch() = 0;
+    virtual void ProcessEvent(io_event_args* args, int32 res, uint32 flags) = 0;
 
 protected:
-    int sock_fd;
+    int32 sock_fd;
+    int8 version;
+
+    io_uring_context& io_ctx;
 };
 
 } // namespace Hypnos

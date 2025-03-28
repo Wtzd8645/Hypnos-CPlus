@@ -45,7 +45,7 @@ target_include_directories(Hypnos PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/Include")
 
 target_link_libraries(Hypnos PUBLIC Hypnos-Core)
 if (UNIX)
-    target_link_libraries(Hypnos PRIVATE pthread)
+    target_link_libraries(Hypnos PRIVATE pthread uring)
 endif ()
 
 add_subdirectory("Tests")

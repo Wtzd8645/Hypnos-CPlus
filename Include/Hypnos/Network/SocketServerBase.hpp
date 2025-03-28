@@ -2,22 +2,19 @@
 
 #include "RequestBase.hpp"
 #include "ResponseBase.hpp"
+#include "SocketBase.hpp"
 #include <Hypnos-Core/Mediation/EventDispatcher.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
 
-class SocketServerBase
+class SocketServerBase : public SocketBase
 {
 public:
+    SocketServerBase(io_uring_context& ctx) : SocketBase(ctx) { }
+
     virtual ~SocketServerBase() = default;
 
-    virtual void Initialize() = 0;
-    virtual void Release() = 0;
-
-    virtual void Listen() = 0;
-    virtual void Shutdown() = 0;
-    virtual void Dispatch() = 0;
     virtual void Close(Container::List<ConnectionHandle>* conn_handles) = 0;
     virtual void Send(Container::List<ConnectionHandle>* conns, ResponseBase* resp) = 0;
 

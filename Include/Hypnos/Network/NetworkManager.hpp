@@ -3,8 +3,11 @@
 #include "NetworkConfig.hpp"
 #include "NetworkDefinition.hpp"
 #include "SocketServerBase.hpp"
+#include <Hypnos-Core/Cache/SPSC/MmapBufferPool.hpp>
 #include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Mediation/EventHandlerBase.hpp>
+#include <Hypnos-Core/System.hpp>
+#include <liburing.h>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -18,42 +21,41 @@ public:
         return instance;
     }
 
+    inline static void SetConfig(const NetworkConfig& config) noexcept
+    {
+        NetworkManager::config = config;
+    }
+
 private:
-    NetworkManager() { }
+    static NetworkConfig config;
+
+    NetworkManager() = default;
     NetworkManager(NetworkManager const&) = delete;
-    ~NetworkManager() { Release(); }
+    NetworkManager& operator=(NetworkManager const&) = delete;
+    ~NetworkManager() = default;
 
 public:
-    void Initialize(NetworkConfig* config);
+    void Initialize();
     void Release();
-    void Listen(ServerId sockId);
-    void Shutdown(ServerId sockId);
 
     inline void Update()
     {
-        for (auto& server : servers)
+        for (auto& sock : sockets)
         {
-            server->Dispatch();
+            sock->Dispatch();
         }
     }
 
-    inline void Send(ServerId id, Container::List<ConnectionHandle>* conn_handles, ResponseBase* resp)
-    {
-        servers[id]->Send(conn_handles, resp);
-    }
-
-    inline void Register(ServerId id, RequestId gid, EventHandlerBase<RequestBase*>* handler)
-    {
-        servers[id]->Register(gid, handler);
-    }
-
-    inline void Unregister(ServerId id, RequestId gid)
-    {
-        servers[id]->Unregister(gid);
-    }
-
 private:
-    Container::List<SocketServerBase*> servers;
+    alignas(64) Atomic<bool> running;
+    Thread io_thread;
+    io_uring_context* io_ctx;
+
+    Container::List<SocketBase*> sockets;
+    Container::UnorderedMap<int32, SocketServerBase*> servers;
+
+    void ProcessEvents();
+    void OnCqeError(int32 err);
 };
 
 } // namespace Hypnos

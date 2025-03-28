@@ -144,7 +144,7 @@ inline void TcpListener::Send(ResponseBase* response)
 void TcpListener::ProcessEvents()
 {
     int evtNum = 0;
-    Socket sock = 0;
+    int32 sock = 0;
     while (true)
     {
         evtNum = ::epoll_wait(epfd, epEventBuf, maxConnections, -1);
@@ -182,7 +182,7 @@ inline void TcpListener::Accept()
 {
     while (true)
     {
-        Socket sock = ::accept(listenSocket, &acceptedSockAddr, &acceptedSockAddrLen);
+        int32 sock = ::accept(listenSocket, &acceptedSockAddr, &acceptedSockAddrLen);
         if (sock == SOCKET_ERROR)
         {
             int errorCode = errno;
@@ -231,7 +231,7 @@ inline void TcpListener::Accept()
     }
 }
 
-inline void TcpListener::Receive(Socket sock)
+inline void TcpListener::Receive(int32 sock)
 {
     //Connection* conn = connection_map[sock];
     //PacketContext* ctx = &conn->recv_ctx;

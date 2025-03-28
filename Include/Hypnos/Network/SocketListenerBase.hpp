@@ -105,7 +105,7 @@ protected:
 #endif
     int32 maxConnections;
     int32 maxPacketBytes;
-    Socket listenSocket = INVALID_FD;
+    int32 listenSocket = INVALID_FD;
 
     Thread* receiveThread;
     Mutex request_mutex;

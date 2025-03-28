@@ -16,6 +16,7 @@ struct ConnectionListenerConfig
 
 struct NetworkConfig
 {
+    int32 max_conns;
     ConnectionListenerConfig listenerCfg;
 };
 

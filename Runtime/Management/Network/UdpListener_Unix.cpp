@@ -140,7 +140,7 @@ inline void UdpListener::Send(ResponseBase* response)
 void UdpListener::ProcessEvents()
 {
     int evtNum = 0;
-    Socket sock = 0;
+    int32 sock = 0;
     while (true)
     {
         evtNum = ::epoll_wait(epfd, epEventBuf, maxConnections, -1);

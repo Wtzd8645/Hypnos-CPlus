@@ -1,51 +1,51 @@
 #pragma once
 
+#include "Hypnos/Network/IoUringBufferPool.hpp"
+#include <Hypnos-Core/Cache/ObjectPool.hpp>
+#include <Hypnos-Core/Cache/SPSC/MmapBufferPool.hpp>
 #include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Container/Queue.hpp>
 #include <Hypnos-Core/Types.hpp>
-
-#if defined _WIN32
-
-#elif defined __linux__
+#include <cstring>
+#include <liburing.h>
 #include <netinet/in.h>
-#endif
+#include <sys/eventfd.h>
 
 namespace Blanketmen {
 namespace Hypnos {
 
-constexpr const int32 MAX_ETH_MTU = 1500; // Ethernet (Standard) MTU.
-constexpr const int32 MAX_WIFI_MTU = 1500; // Wi-Fi (802.11) MTU.
-constexpr const int32 MAX_PPPoE_MTU = 1492; // PPPoE (DSL) MTU.
-constexpr const int32 MAX_VPN_MTU = 1476; // VPN (GRE Tunnel) MTU.
-constexpr const int32 MAX_JUMBO_MTU = 9000; // Jumbo Frames MTU.
-constexpr const int32 MAX_LOOPBACK_MTU = 65536; // Loopback (lo Interface) MTU.
-constexpr const int32 MIN_IPV6_MTU = 1280; // IPv6 (Minimum) MTU.
+constexpr int32 MAX_ETH_MTU = 1500; // Ethernet (Standard) MTU.
+constexpr int32 MAX_WIFI_MTU = 1500; // Wi-Fi (802.11) MTU.
+constexpr int32 MAX_PPPoE_MTU = 1492; // PPPoE (DSL) MTU.
+constexpr int32 MAX_VPN_MTU = 1476; // VPN (GRE Tunnel) MTU.
+constexpr int32 MAX_JUMBO_MTU = 9000; // Jumbo Frames MTU.
+constexpr int32 MAX_LOOPBACK_MTU = 65536; // Loopback (lo Interface) MTU.
+constexpr int32 MIN_IPV6_MTU = 1280; // IPv6 (Minimum) MTU.
 
-constexpr const int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
-constexpr const int32 MAX_BUFFER_SIZE = 2048;
+constexpr int32 MAX_PACKET_SIZE = MAX_VPN_MTU;
+constexpr int32 MAX_BUFFER_SIZE = 2048;
+
+constexpr int32 IO_RECV_BUF_GROUP = 0;
+
+constexpr const int32 INVALID_FD = -1;
+constexpr const int32 SOCKET_ERROR = -1;
+constexpr const uint16 DEFAULT_PORT = 27015;
 
 typedef int16 packet_size;
 
-typedef uint8 ServerId, ServerEventId;
-typedef uint16 RequestId;
+enum class EndpointRole : uint8
+{
+    Server,
+    Client
+};
 
-enum class ConnectionEventId : int8
+enum class ConnectionEventId : uint8
 {
     CONNECT,
     DISCONNECT
 };
 
-#if defined _WIN32
-typedef SOCKET Socket;
-constexpr const char* DEFAULT_PORT = "27015";
-#elif defined __linux__
-typedef int Socket;
-constexpr const int INVALID_FD = -1;
-constexpr const int SOCKET_ERROR = -1;
-constexpr const uint16 DEFAULT_PORT = 27015;
-#endif
-
-enum TransportProtocol : int8
+enum TransportProtocol : uint8
 {
     LOCAL_SIMULATION = 0,
     TCP = 1,
@@ -53,12 +53,21 @@ enum TransportProtocol : int8
     RUDP = 3
 };
 
-enum socket_operation : int8
+enum socket_operation : uint8
 {
     ACPT,
     RECV,
     POLL,
     SEND
+};
+
+struct socket_handle
+{
+    uint8 id;
+    uint8 version;
+    int32 sock;
+
+    inline operator int32() { return sock; }
 };
 
 struct recv_context
@@ -77,9 +86,15 @@ struct send_context
     Container::Queue<uint8*> pending_responses;
 };
 
+struct Socket
+{
+    int32 sock_fd = INVALID_FD;
+    uint8 version = 0;
+};
+
 struct Connection
 {
-    Socket sock = INVALID_FD;
+    int32 sock = INVALID_FD;
     uint8 version = 0;
     recv_context recv_ctx;
     send_context send_ctx;
@@ -89,7 +104,7 @@ struct ConnectionHandle
 {
     Connection* conn;
     uint8 version;
-    
+
     inline operator Connection* () { return conn; }
 };
 
@@ -111,17 +126,50 @@ union buffer_metadata
     } send;
 };
 
-struct socket_event_args
+struct io_event_args
 {
     Connection* conn;
-    uint8 version;
+    uint8 conn_ver;
     socket_operation op;
+    int8 sock_id;
+    int8 sock_ver;
+};
+
+struct io_uring_context
+{
+    int32 efd;
+    io_uring ring;
+    io_uring_params ring_params;
+    io_uring_buf_ring* recv_buf_ring;
+    int32 recv_buf_mask;
+    int32 recv_buf_count;
+    Cache::IoUringBufferPool recv_buf_pool;
+    Cache::SPSC::MmapBufferPool send_buf_pool;
+    Cache::ObjectPool<io_event_args> event_args_pool;
+
+    io_uring_context(uint max_conns) :
+        recv_buf_pool(MAX_BUFFER_SIZE, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB, max_conns),
+        send_buf_pool(MAX_BUFFER_SIZE, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB, max_conns),
+        event_args_pool(max_conns)
+    {
+        efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+        std::memset(&ring_params, 0, sizeof(ring_params));
+        ring_params.flags = IORING_SETUP_SQPOLL | IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN; // TODO: Make configurable.
+        ring_params.sq_thread_idle = 8000;
+    }
+
+    inline void advance_buf_ring()
+    {
+        if (recv_buf_count > 0)
+        {
+            io_uring_buf_ring_advance(recv_buf_ring, recv_buf_count);
+            recv_buf_count = 0;
+        }
+    }
 };
 
 struct SocketOperationArgs
 {
-    static const int32 MAX_PACKET_SIZE = Hypnos::MAX_PACKET_SIZE;
-
     Container::List<ConnectionHandle>* conn_handles;
     uint8* buffer;
     packet_size length;
