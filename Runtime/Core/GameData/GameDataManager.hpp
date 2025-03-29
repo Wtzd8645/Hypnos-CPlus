@@ -1,0 +1,162 @@
+#pragma once
+
+#include <Hypnos-Kernel/Base.hpp>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+namespace Blanketmen {
+namespace Hypnos {
+
+class GameDataManager
+{
+public:
+    inline static GameDataManager& Instance() noexcept
+    {
+        static GameDataManager instance;
+        return instance;
+    }
+
+private:
+    GameDataManager() { }
+    GameDataManager(GameDataManager const&) = delete;
+    void operator=(GameDataManager const&) = delete;
+
+    ~GameDataManager()
+    {
+        if (dataMmapPtr != nullptr)
+        {
+            ::munmap(dataMmapPtr, fdStat.st_size);
+            ::close(dataFd);
+        }
+    }
+
+public:
+    void CreateMmap(const char8* dataFilePath);
+    int32 GetKeyTableOffset(const char8* tableName);
+    uint8* GetDataPointer(int32 keyTableOffset, int32 key);
+    uint8* GetDataPointer(int32 offset);
+    string GetString(int32 offset);
+
+private:
+    const int32 InvalidOffset = -1;
+
+    const int32 StrCountSize = 4;
+    const int32 TableCapacitySize = 4;
+    const int32 InfoTableEntrySize = 24;
+    const int32 KeyTableEntrySize = 12;
+
+    int32 dataFd = -1;
+    uint8* dataMmapPtr = nullptr;
+    struct stat fdStat;
+};
+
+template<typename T>
+struct NArray
+{
+public:
+    inline int32 Length() const noexcept { return length; }
+
+    inline T operator[](size_t index) const
+    {
+        if (pointer == nullptr || index < 0 || index >= length)
+        {
+            // throw new AccessViolationException();
+        }
+        return *(pointer + index);
+    }
+
+    NArray(T* ptr, int32 len)
+    {
+        pointer = ptr;
+        length = len;
+    }
+
+private:
+    T* pointer;
+    int32 length;
+};
+
+template<typename T>
+struct NStructArray
+{
+public:
+    inline int32 Length() const noexcept { return length; }
+
+    inline T operator[](size_t index) const
+    {
+        if (pointer == nullptr || index < 0 || index >= length)
+        {
+            // throw new AccessViolationException();
+        }
+
+        return T(pointer + index * structSize);
+    }
+
+    NStructArray(uint8* ptr, int32 size, int32 len)
+    {
+        pointer = ptr;
+        structSize = size;
+        length = len;
+    }
+
+private:
+    int32 length;
+    uint8* pointer;
+    int32 structSize;
+};
+
+struct NStringArray
+{
+public:
+    inline int32 Length() const noexcept { return length; }
+
+    inline string operator[](size_t index) const
+    {
+        if (pointer == nullptr || index < 0 || index >= length)
+        {
+            // throw new AccessViolationException();
+        }
+        return GameDataManager::Instance().GetString(*(pointer + index));
+    }
+
+    NStringArray(int32* ptr, int32 len)
+    {
+        pointer = ptr;
+        length = len;
+    }
+
+private:
+    int32 length;
+    int32* pointer;
+};
+
+template<typename T>
+struct NReferenceArray
+{
+public:
+    inline int32 Length() const noexcept { return length; }
+
+    inline T operator[](size_t index) const
+    {
+        if (pointer == nullptr || index < 0 || index >= length)
+        {
+            // throw new AccessViolationException();
+        }
+        return T(GameDataManager::Instance().GetDataPointer(*(pointer + index)));
+    }
+
+    NReferenceArray(int32* ptr, int32 len)
+    {
+        pointer = ptr;
+        length = len;
+    }
+
+private:
+    int32 length;
+    int32* pointer;
+};
+
+} // namespace Hypnos
+} // namespace Blanketmen

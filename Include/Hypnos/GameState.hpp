@@ -1,4 +1,4 @@
 #pragma once
 
-#include "GameState/GameStateBase.hpp"
-#include "GameState/GameStateManager.hpp"
+#include "Core/GameState/GameStateBase.hpp"
+#include "Core/GameState/GameStateManager.hpp"

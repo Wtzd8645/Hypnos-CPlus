@@ -1,8 +1,8 @@
 #include "Network/NetworkTest.hpp"
-#include <Hypnos/Logging.hpp>
+#include <Hypnos-Kernel.hpp>
 #include <iostream>
 
-using namespace Blanketmen::Hypnos;
+using namespace Blanketmen;
 
 int main()
 {

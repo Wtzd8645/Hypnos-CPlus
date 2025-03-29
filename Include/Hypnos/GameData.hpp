@@ -1,4 +1,4 @@
 #pragma once
 
-#include "GameData/GameDataManager.hpp"
-#include "GameData/I18nTextManager.hpp"
+#include "Core/GameData/GameDataManager.hpp"
+#include "Core/GameData/I18nTextManager.hpp"

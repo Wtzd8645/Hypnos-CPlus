@@ -1,5 +1,5 @@
 #pragma once
 
-#include "GameTime/GameTimeDefinition.hpp"
-#include "GameTime/GameTimeManager.hpp"
-#include "GameTime/GameTimerBase.hpp"
+#include "Core/GameTime/GameTimeDefinition.hpp"
+#include "Core/GameTime/GameTimeManager.hpp"
+#include "Core/GameTime/GameTimerBase.hpp"
