@@ -6,6 +6,7 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 TcpSocket::TcpSocket()
 {
@@ -93,7 +94,7 @@ void TcpSocket::ProcessEvents()
     io_uring_queue_init(256, &io_ring, 0);
 
     // 提交初始的 accept 請求
-    sockaddr_in client_addr{};
+    sockaddr_in client_addr {};
     socklen_t client_len = sizeof(client_addr);
 
     struct io_uring_sqe* sqe = io_uring_get_sqe(&io_ring);
@@ -116,7 +117,7 @@ void TcpSocket::ProcessEvents()
             set_nonblocking(client_fd);
 
             // 回顯消息
-            Client* client = new Client{ client_fd };
+            Client* client = new Client { client_fd };
             struct io_uring_sqe* sqe = io_uring_get_sqe(&io_ring);
             io_uring_prep_recv(sqe, client_fd, client->data, BUFFER_SIZE, 0);
             io_uring_sqe_set_data(sqe, client);
@@ -161,5 +162,6 @@ void TcpSocket::SendResponses()
 {
 }
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

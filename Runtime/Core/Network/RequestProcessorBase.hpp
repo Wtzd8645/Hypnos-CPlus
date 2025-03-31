@@ -5,6 +5,7 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class RequestProcessorBase
 {
@@ -83,5 +84,6 @@ private:
     EventHandlerBase<RequestBase*>* request_handlers[MAX_GROUP];
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

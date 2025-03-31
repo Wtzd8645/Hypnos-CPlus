@@ -5,6 +5,7 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class RequestFactoryBase
 {
@@ -15,5 +16,6 @@ public:
     virtual void Recycle(RequestBase* req) = 0;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

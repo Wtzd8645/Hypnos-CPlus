@@ -1,9 +1,9 @@
 ﻿#pragma once
 
-#include "Network.hpp"
+#include "IOUringContext.hpp"
 #include "NetworkConfig.hpp"
+#include "NetworkDefs.hpp"
 #include "SocketServerBase.hpp"
-#include <Platform.hpp>
 #include <liburing.h>
 
 namespace Blanketmen {
@@ -47,7 +47,7 @@ public:
 private:
     alignas(64) Atomic<bool> running;
     Thread io_thread;
-    io_uring_context* io_ctx;
+    IOUringContext* io_ctx;
 
     Container::List<SocketBase*> sockets;
     Container::UnorderedMap<int32, SocketServerBase*> servers;

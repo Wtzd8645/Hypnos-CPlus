@@ -4,6 +4,7 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class RequestPoolBase
 {
@@ -14,5 +15,6 @@ public:
     virtual void Release(RequestBase* resp) = 0;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

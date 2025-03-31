@@ -1,3 +1,4 @@
+#include "Connection.hpp"
 #include "NetworkUtils.hpp"
 #include "TcpListener.hpp"
 #include <Hypnos-Kernel.hpp>

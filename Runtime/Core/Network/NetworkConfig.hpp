@@ -1,10 +1,11 @@
 #pragma once
 
-#include "Network.hpp"
+#include "NetworkDefs.hpp"
 #include "RequestFactoryBase.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 struct ConnectionListenerConfig
 {
@@ -20,5 +21,6 @@ struct NetworkConfig
     ConnectionListenerConfig listenerCfg;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

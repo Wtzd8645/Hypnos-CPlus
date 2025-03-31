@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Network.hpp"
 #include <Hypnos-Kernel.hpp>
 #include <cstring>
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class PacketWriter
 {
@@ -109,5 +109,6 @@ public:
     }
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

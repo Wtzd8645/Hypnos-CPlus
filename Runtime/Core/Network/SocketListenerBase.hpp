@@ -15,14 +15,15 @@
 #include <sys/unistd.h>
 #endif
 
-#include "Network.hpp"
 #include "NetworkConfig.hpp"
+#include "NetworkDefs.hpp"
 #include "RequestFactoryBase.hpp"
 #include "ResponseBase.hpp"
 #include <Hypnos-Kernel.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class SocketListenerBase
 {
@@ -118,5 +119,6 @@ protected:
     Container::List<ResponseBase*>* consumer_responses;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

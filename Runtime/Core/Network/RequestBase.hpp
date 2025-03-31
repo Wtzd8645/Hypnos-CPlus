@@ -1,11 +1,12 @@
 #pragma once
 
-#include "Network.hpp"
+#include "NetworkDefs.hpp"
 #include "PacketReader.hpp"
 #include <Hypnos-Kernel.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class RequestBase
 {
@@ -32,5 +33,6 @@ protected:
     virtual void UnpackBody() = 0;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

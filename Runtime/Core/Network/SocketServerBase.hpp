@@ -7,11 +7,12 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class SocketServerBase : public SocketBase
 {
 public:
-    SocketServerBase(io_uring_context& ctx) : SocketBase(ctx) { }
+    SocketServerBase(uint8 id, IOUringContext& ctx) : SocketBase(id, ctx) { }
 
     virtual ~SocketServerBase() = default;
 
@@ -22,5 +23,6 @@ public:
     virtual void Unregister(int32 gid) = 0;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

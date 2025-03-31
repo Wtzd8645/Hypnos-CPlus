@@ -7,26 +7,26 @@
 
 namespace Blanketmen {
 namespace Hypnos {
-namespace Cache {
+namespace Network {
 
-class IoUringBufferPool
+class IOUringBufferPool
 {
 public:
     static constexpr size_t MIN_BUFFER_SIZE = 1024;
 
-    IoUringBufferPool(int32 size, int32 flags, int32 cap = 8)
+    IOUringBufferPool(size_t buf_size, int32 flags, size_t cap = 8)
     {
-        if (size < MIN_BUFFER_SIZE)
+        if (buf_size < MIN_BUFFER_SIZE)
         {
-            size = MIN_BUFFER_SIZE;
+            buf_size = MIN_BUFFER_SIZE;
         }
 
-        this->size = (size + alignof(uint8*) - 1) & ~(alignof(uint8*) - 1);
+        this->buf_size = (buf_size + alignof(uint8*) - 1) & ~(alignof(uint8*) - 1);
         mmap_flags |= flags;
         Allocate(cap > 8 ? cap : 8);
     }
 
-    ~IoUringBufferPool()
+    ~IOUringBufferPool()
     {
         for (auto& block : blocks)
         {
@@ -40,7 +40,7 @@ public:
 
     void Allocate(int32 count)
     {
-        size_t mmap_size = size * count;
+        size_t mmap_size = buf_size * count;
         uint8* ptr = static_cast<uint8*>(mmap(nullptr, mmap_size, mmap_prot, mmap_flags, -1, 0));
         if (ptr == MAP_FAILED)
         {
@@ -52,26 +52,26 @@ public:
 
         for (int32 i = 1; i < count; ++i)
         {
-            segments.push_back(ptr + size * i);
+            segments.push_back(ptr + buf_size * i);
         }
     }
 
 private:
-    struct mmap_block
+    struct MmapBlock
     {
         uint8* ptr;
         size_t size;
     };
 
-    int32 size = 0;
+    size_t buf_size = 0;
     int32 mmap_prot = PROT_READ | PROT_WRITE;
     int32 mmap_flags = MAP_PRIVATE | MAP_ANONYMOUS;
 
-    int32 capacity;
-    std::forward_list<mmap_block, Memory::MemoryPoolAllocator<mmap_block>> blocks;
+    size_t capacity;
+    std::forward_list<MmapBlock, Memory::MemoryPoolAllocator<MmapBlock>> blocks;
     Container::List<uint8*> segments;
 };
 
-} // namespace Cache
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

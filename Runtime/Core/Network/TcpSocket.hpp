@@ -5,6 +5,7 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class TcpSocket : public SocketBase
 {
@@ -25,5 +26,6 @@ private:
     void SendResponses();
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

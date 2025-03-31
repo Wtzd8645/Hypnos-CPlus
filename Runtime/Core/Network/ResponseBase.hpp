@@ -1,10 +1,11 @@
 #pragma once
 
-#include "Network.hpp"
+#include "NetworkDefs.hpp"
 #include "PacketWriter.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 class ResponseBase
 {
@@ -12,7 +13,7 @@ public:
     virtual ~ResponseBase() = 0;
 
     // TODO: Check message size.
-    void Pack(SocketOperationArgs& args)
+    void Pack(ConnectionEventArgs& args)
     {
         buffer = args.buffer;
         offset = sizeof(packet_size);
@@ -30,5 +31,6 @@ protected:
     virtual void PackInternal() = 0;
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

@@ -3,6 +3,7 @@
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 TcpListener::TcpListener(int32 maxConns, RequestHandlerBase* requestFcty, Dictionary<uint16, MulticastDelegate<RequestBase*>*> reqHandlerDict) :
     iocpThreads(8),
@@ -274,5 +275,6 @@ void TcpListener::Send(ResponseBase* response)
     ::WSASend(response->client->socket, &(iocpArgs->wsaBuffer), 1, NULL, 0, (LPWSAOVERLAPPED)iocpArgs, NULL);
 }
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

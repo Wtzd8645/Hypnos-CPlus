@@ -1,11 +1,11 @@
 #pragma once
 
-#include "Network.hpp"
 #include <Hypnos-Kernel.hpp>
 #include <cstring>
 
 namespace Blanketmen {
 namespace Hypnos {
+namespace Network {
 
 template<typename T>
 inline bool Read(const uint8_t* buffer, size_t size, size_t& offset, T& out)
@@ -123,5 +123,6 @@ public:
     }
 };
 
+} // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

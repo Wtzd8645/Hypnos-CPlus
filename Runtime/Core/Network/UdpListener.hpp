@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Connection.hpp"
 #include "SocketListenerBase.hpp"
 
 namespace Blanketmen {

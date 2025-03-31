@@ -14,7 +14,7 @@ add_library(Hypnos-Runtime STATIC ${PLATFORM_IMPL_FILES}
 
 set_target_properties(Hypnos-Runtime PROPERTIES LINKER_LANGUAGE CXX)
 
-target_include_directories(Hypnos-Runtime INTERFACE ${CMAKE_CURRENT_SOURCE_DIR} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../Include")
+target_include_directories(Hypnos-Runtime INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../Include")
 
 target_link_libraries(Hypnos-Runtime PUBLIC Hypnos-Kernel)
 if (UNIX)
