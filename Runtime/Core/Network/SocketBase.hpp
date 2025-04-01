@@ -9,7 +9,7 @@ namespace Network {
 class SocketBase
 {
 public:
-    static constexpr int32 BUF_META_OFFSET = Memory::AlignUp(MAX_PACKET_SIZE, alignof(BufferMetadata));
+    static constexpr int32 BUF_META_OFFSET = MemoryUtils::AlignUp(MAX_PACKET_SIZE, alignof(BufferMetadata));
 
     const uint8 id;
 

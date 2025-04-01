@@ -136,7 +136,8 @@ void TcpServer::Close(Container::List<ConnectionHandle>* conn_handles)
         std::this_thread::yield();
     }
     
-    if (polling.fetch_add(1, std::memory_order_release) == 0)
+    uint64 tail = poll_tail.fetch_add(1, std::memory_order_release);
+    if (tail == poll_head.load(std::memory_order_acquire))
     {
         eventfd_write(io_ctx.efd, 1);
     }
@@ -144,7 +145,13 @@ void TcpServer::Close(Container::List<ConnectionHandle>* conn_handles)
 
 void TcpServer::Send(Container::List<ConnectionHandle>* conn_handles, ResponseBase* resp)
 {
-    ConnectionEventArgs args = { conn_handles, io_ctx.send_buf_pool.Acquire() };
+    uint8* buf;
+    while (!io_ctx.send_buf_pool.Acquire(buf))
+    {
+        std::this_thread::yield();
+    }
+
+    ConnectionEventArgs args = { conn_handles, buf };
     resp->Pack(args);
     response_pool->Release(resp);
 
@@ -153,7 +160,8 @@ void TcpServer::Send(Container::List<ConnectionHandle>* conn_handles, ResponseBa
         std::this_thread::yield();
     }
 
-    if (polling.fetch_add(1, std::memory_order_release) == 0)
+    uint64 tail = poll_tail.fetch_add(1, std::memory_order_release);
+    if (tail == poll_head.load(std::memory_order_acquire))
     {
         eventfd_write(io_ctx.efd, 1);
     }
@@ -211,7 +219,7 @@ void TcpServer::CloseInternal(Connection* conn)
         auto& send_meta = BufferMetadata::Get(buf, BUF_META_OFFSET).send;
         if (--send_meta.conn_count == 0)
         {
-            io_ctx.send_buf_pool.Release(buf);
+            while (!io_ctx.send_buf_pool.Release(buf)) { }
         }
 
         if (send_ctx.pending_responses.empty())
@@ -265,63 +273,65 @@ inline void TcpServer::SendInternal(IOEventArgs* args, const void* buf, int32 le
 
 void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
 {
-    uint8 expected;
+    uint64 tail = poll_tail.load(std::memory_order_acquire);
     ConnectionEventArgs conn_args;
-    do
+    while (conn_event_args.Dequeue(conn_args)) // TODO: Can batch pop.
     {
-        expected = polling.load(std::memory_order_acquire);
-        while (conn_event_args.Dequeue(conn_args)) // TODO: Can batch pop.
+        if (conn_args.buffer == nullptr)
         {
-            if (conn_args.buffer == nullptr)
+            for (ConnectionHandle& conn_handle : *(conn_args.conn_handles))
             {
-                for (ConnectionHandle& conn_handle : *(conn_args.conn_handles))
+                CloseInternal(conn_handle);
+            }
+        }
+        else
+        {
+            auto& send_meta = BufferMetadata::Get(conn_args.buffer, BUF_META_OFFSET).send;
+            send_meta.conn_count = conn_args.conn_handles->size();
+            send_meta.size = conn_args.length;
+            for (ConnectionHandle& conn_handle : *(conn_args.conn_handles))
+            {
+                if (conn_handle.version != conn_handle.conn->version)
                 {
-                    CloseInternal(conn_handle);
+                    send_meta.conn_count--;
+                    continue;
+                }
+
+                SendContext& ctx = conn_handle.conn->send_ctx;
+                if (ctx.pending_bytes > 0)
+                {
+                    // PERF: Merge packets if size less than threshold.
+                    ctx.pending_responses.push(conn_args.buffer);
+                }
+                else
+                {
+                    ctx.buffer = conn_args.buffer;
+                    ctx.pending_bytes = send_meta.size;
+                    ctx.processed_bytes = 0;
+
+                    IOEventArgs* send_args = event_args_pool.Acquire();
+                    send_args->op = SocketOp::Send;
+                    send_args->sock_ver = version;
+                    send_args->sock_id = id;
+                    send_args->conn_ver = conn_handle.conn->version;
+                    send_args->conn = conn_handle;
+                    SendInternal(send_args, ctx.buffer, send_meta.size);
                 }
             }
-            else
+
+            if (send_meta.conn_count <= 0)
             {
-                auto& send_meta = BufferMetadata::Get(conn_args.buffer, BUF_META_OFFSET).send;
-                send_meta.conn_count = conn_args.conn_handles->size();
-                send_meta.size = conn_args.length;
-                for (ConnectionHandle& conn_handle : *(conn_args.conn_handles))
-                {
-                    if (conn_handle.version != conn_handle.conn->version)
-                    {
-                        send_meta.conn_count--;
-                        continue;
-                    }
-
-                    SendContext& ctx = conn_handle.conn->send_ctx;
-                    if (ctx.pending_bytes > 0)
-                    {
-                        // PERF: Merge packets if size less than threshold.
-                        ctx.pending_responses.push(conn_args.buffer);
-                    }
-                    else
-                    {
-                        ctx.buffer = conn_args.buffer;
-                        ctx.pending_bytes = send_meta.size;
-                        ctx.processed_bytes = 0;
-
-                        IOEventArgs* send_args = event_args_pool.Acquire();
-                        send_args->op = SocketOp::Send;
-                        send_args->sock_ver = version;
-                        send_args->sock_id = id;
-                        send_args->conn_ver = conn_handle.conn->version;
-                        send_args->conn = conn_handle;
-                        SendInternal(send_args, ctx.buffer, send_meta.size);
-                    }
-                }
-
-                if (send_meta.conn_count <= 0)
-                {
-                    io_ctx.send_buf_pool.Release(conn_args.buffer);
-                }
+                while (!io_ctx.send_buf_pool.Release(conn_args.buffer)) { }
             }
         }
     }
-    while (polling.compare_exchange_weak(expected, 0, std::memory_order_relaxed));
+
+    poll_head.store(tail, std::memory_order_release);
+    if (tail != poll_tail.load(std::memory_order_acquire))
+    {
+        OnPoll(args, res, flags);
+        return;
+    }
 
     if ((flags & IORING_CQE_F_MORE) == 0)
     {
@@ -535,7 +545,7 @@ void TcpServer::OnSend(IOEventArgs* args, int32 res, uint32 flags)
         auto& send_meta = BufferMetadata::Get(ctx.buffer, BUF_META_OFFSET).send;
         if (--send_meta.conn_count <= 0)
         {
-            io_ctx.send_buf_pool.Release(ctx.buffer);
+            while (!io_ctx.send_buf_pool.Release(ctx.buffer)) { }
         }
 
         if (ctx.pending_responses.empty())

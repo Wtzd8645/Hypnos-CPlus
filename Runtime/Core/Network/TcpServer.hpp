@@ -31,7 +31,8 @@ public:
 private:
     static constexpr int32 IO_RECV_BUF_GROUP = 0;
 
-    alignas(64) Atomic<uint8> polling;
+    alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_head { 0 };
+    alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_tail { 0 };
     Cache::ObjectPool<IOEventArgs> event_args_pool;
 
     Cache::IndexedObjectPool<Connection> conn_pool;

@@ -45,7 +45,8 @@ public:
     }
 
 private:
-    alignas(64) Atomic<bool> running;
+    alignas(CACHE_LINE_SIZE) Atomic<bool> running;
+
     Thread io_thread;
     IOUringContext* io_ctx;
 
