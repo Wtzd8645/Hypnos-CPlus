@@ -2,10 +2,11 @@
 
 #include "Connection.hpp"
 #include "IOUringContext.hpp"
+#include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
-#include "RequestPoolBase.hpp"
-#include "ResponsePoolBase.hpp"
-#include "SocketServerBase.hpp"
+#include "RequestAllocatorBase.hpp"
+#include "ResponseAllocatorBase.hpp"
+#include "ServerSocketBase.hpp"
 #include <Hypnos-Kernel/Core/Cache.hpp>
 #include <Hypnos-Kernel/Core/Container.hpp>
 
@@ -13,17 +14,17 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-class TcpServer : public SocketServerBase
+class TcpServer : public ServerSocketBase
 {
 public:
-    TcpServer(uint8 id, IOUringContext& ctx, size_t max_conns);
+    TcpServer(SocketConfig& cfg, IOUringContext& ctx);
     ~TcpServer();
 
     void Start() override;
     void Stop() override;
 
     void Dispatch() override;
-    void ProcessEvent(IOEventArgs* args, int32 res, uint32 flags) override;
+    void ProcessIOEvent(IOEventArgs* args, int32 res, uint32 flags) override;
 
     void Close(Container::List<ConnectionHandle>* conn_handles) override;
     void Send(Container::List<ConnectionHandle>* conn_handles, ResponseBase* resp) override;
@@ -34,17 +35,6 @@ private:
     alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_head { 0 };
     alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_tail { 0 };
     Cache::ObjectPool<IOEventArgs> event_args_pool;
-
-    Cache::IndexedObjectPool<Connection> conn_pool;
-    Container::SPSC::RingBuffer<ConnectionEvent> conn_events;
-    EventHandlerBase<ConnectionHandle>* conn_event_handlers[ConnectionEvent::MAX_EVENT_TYPES];
-
-    Container::SPSC::RingBuffer<RequestBase*> requests;
-    RequestPoolBase* request_pool;
-    Container::List<EventHandlerBase<RequestBase*>*> request_handlers;
-
-    Container::SPSC::RingBuffer<ConnectionEventArgs> conn_event_args;
-    ResponsePoolBase* response_pool;
 
     void CloseInternal(Connection* conn);
     void PollInternal(IOEventArgs* args);

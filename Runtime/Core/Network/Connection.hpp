@@ -41,27 +41,6 @@ struct ConnectionHandle
     inline operator Connection* () { return conn; }
 };
 
-struct ConnectionEventArgs
-{
-    Container::List<ConnectionHandle>* conn_handles;
-    uint8* buffer;
-    packet_size length;
-};
-
-struct ConnectionEvent
-{
-    enum class Type : uint8
-    {
-        Connect,
-        Disconnect
-    };
-
-    static constexpr size_t MAX_EVENT_TYPES = static_cast<size_t>(Type::Disconnect) + 1;
-
-    Type type;
-    ConnectionHandle conn_handle;
-};
-
 } // namespace Network
 } // namespace Hypnos
 } // namespace Blanketmen

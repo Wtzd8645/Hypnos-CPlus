@@ -6,10 +6,10 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-class ResponsePoolBase
+class ResponseAllocatorBase
 {
 public:
-    virtual ~ResponsePoolBase() = default;
+    virtual ~ResponseAllocatorBase() = default;
 
     virtual ResponseBase* Acquire(uint16 gid, uint16 id) = 0;
     virtual void Release(ResponseBase* resp) = 0;

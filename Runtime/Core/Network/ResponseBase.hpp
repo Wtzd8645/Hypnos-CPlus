@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Connection.hpp"
 #include "NetworkDefs.hpp"
 #include "PacketWriter.hpp"
 
@@ -7,21 +8,29 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
+struct ResponseArgs
+{
+    Container::List<ConnectionHandle>* conn_handles;
+    uint8* buffer;
+    packet_size length;
+};
+
 class ResponseBase
 {
 public:
     virtual ~ResponseBase() = 0;
 
     // TODO: Check message size.
-    void Pack(ConnectionEventArgs& args)
+    packet_size Pack(uint8* buf)
     {
-        buffer = args.buffer;
+        buffer = buf;
         offset = sizeof(packet_size);
         PackInternal();
 
-        args.length = offset - sizeof(packet_size);
+        packet_size len = offset - sizeof(packet_size);
         offset = 0;
-        PacketWriter::WriteInt16(buffer, offset, args.length);
+        PacketWriter::WriteInt16(buffer, offset, len);
+        return len;
     }
 
 protected:

@@ -3,7 +3,7 @@
 #include "IOUringContext.hpp"
 #include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
-#include "SocketServerBase.hpp"
+#include "ServerSocketBase.hpp"
 #include <liburing.h>
 
 namespace Blanketmen {
@@ -19,18 +19,19 @@ public:
         return instance;
     }
 
-    inline static void SetConfig(const NetworkConfig& config) noexcept
+    inline static void SetConfig(const NetworkConfig& cfg) noexcept
     {
-        NetworkManager::config = config;
+        NetworkManager::config = cfg;
     }
 
 private:
     static NetworkConfig config;
 
     NetworkManager() = default;
+    ~NetworkManager() = default;
+
     NetworkManager(NetworkManager const&) = delete;
     NetworkManager& operator=(NetworkManager const&) = delete;
-    ~NetworkManager() = default;
 
 public:
     void Initialize();
@@ -51,9 +52,9 @@ private:
     IOUringContext* io_ctx;
 
     Container::List<SocketBase*> sockets;
-    Container::UnorderedMap<int32, SocketServerBase*> servers;
+    Container::List<ServerSocketBase*> servers;
 
-    void ProcessEvents();
+    void ProcessIOEvents();
     void OnCqeError(int32 err);
 };
 

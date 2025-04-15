@@ -1,4 +1,6 @@
-﻿#include "NetworkManager.hpp"
+﻿#include "NetworkDefs.hpp"
+#include "NetworkManager.hpp"
+#include "TcpServer.hpp"
 #include <unordered_set>
 
 namespace Blanketmen {
@@ -9,11 +11,27 @@ NetworkConfig NetworkManager::config;
 
 void NetworkManager::Initialize()
 {
-    config.max_conns = 8192; // TODO: Calculate max num of conns.
-    io_ctx = new IOUringContext(config.max_conns);
+    uint32 max_conns = 0;
+    for (auto& cfg : config.server_configs)
+    {
+        max_conns += cfg.max_conns;
+    }
+
+    io_ctx = new IOUringContext(max_conns);
     io_ctx->Setup();
 
     // TODO: Set sockets.
+    for (auto& cfg : config.server_configs)
+    {
+        switch (cfg.protocol)
+        {
+            case TransportProtocol::TCP:
+            {
+                TcpServer* server = new TcpServer(cfg, *io_ctx);
+                break;
+            }
+        }
+    }
 }
 
 void NetworkManager::Release()
@@ -32,7 +50,7 @@ void NetworkManager::Release()
     }
 }
 
-void NetworkManager::ProcessEvents()
+void NetworkManager::ProcessIOEvents()
 {
     io_uring* ring = &io_ctx->ring;
     int32 res;
@@ -52,7 +70,7 @@ void NetworkManager::ProcessEvents()
         io_uring_for_each_cqe(ring, cq_head, cqe)
         {
             IOEventArgs* args = static_cast<IOEventArgs*>(io_uring_cqe_get_data(cqe));
-            sockets[args->sock_id]->ProcessEvent(args, cqe->res, cqe->flags);
+            sockets[args->sock_id]->ProcessIOEvent(args, cqe->res, cqe->flags);
         }
 
         io_ctx->AdvanceBufRing();

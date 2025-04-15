@@ -6,10 +6,10 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-class RequestPoolBase
+class RequestAllocatorBase
 {
 public:
-    virtual ~RequestPoolBase() = default;
+    virtual ~RequestAllocatorBase() = default;
 
     virtual RequestBase* Acquire(uint8* buf) = 0;
     virtual void Release(RequestBase* resp) = 0;

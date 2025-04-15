@@ -90,7 +90,7 @@ public:
         }
     }
 
-    int32 Setup()
+    inline int32 Setup()
     {
         int32 err = io_uring_queue_init_params(max_conns, &ring, &ring_params);
         if (err < 0)
@@ -115,7 +115,7 @@ public:
         return 0;
     }
 
-    inline void AddBufferToRing(int32 bid)
+    inline void ReturnBuffer(int32 bid)
     {
         io_uring_buf_ring_add(recv_buf_ring, recv_buf_pool[bid], MAX_BUFFER_SIZE, bid, recv_buf_mask, recv_buf_count++);
     }

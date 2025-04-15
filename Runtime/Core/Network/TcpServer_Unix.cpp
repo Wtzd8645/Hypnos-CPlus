@@ -10,20 +10,12 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-TcpServer::TcpServer(uint8 id, IOUringContext& ctx, size_t max_conns) : SocketServerBase(id, ctx),
-    conn_pool(max_conns),
-    conn_events(max_conns),
-    requests(max_conns),
-    request_pool(nullptr),
-    conn_event_args(max_conns),
-    response_pool(nullptr)
-{
-}
+TcpServer::TcpServer(SocketConfig& cfg, IOUringContext& ctx) : ServerSocketBase(cfg, ctx) { }
 
 TcpServer::~TcpServer()
 {
     Stop();
-    delete request_pool;
+    delete request_allocator;
 }
 
 void TcpServer::Start()
@@ -103,21 +95,21 @@ void TcpServer::Stop()
 
 void TcpServer::Dispatch()
 {
-    ConnectionEvent evt;
-    while (conn_events.Dequeue(evt))
+    ServerSocketEvent evt;
+    while (sock_events.Dequeue(evt))
     {
         conn_event_handlers[static_cast<size_t>(evt.type)]->Handle(evt.conn_handle);
     }
 
     RequestBase* req = nullptr;
-    while (requests.Dequeue(req)) // TODO: Can batch pop.
+    while (requests.Dequeue(req)) // PERF: Can batch pop.
     {
         EventHandlerBase<RequestBase*>*& handler = request_handlers[req->gid];
         if (handler != nullptr)
         {
             handler->Handle(req);
         }
-        request_pool->Release(req);
+        request_allocator->Release(req);
     }
 
     // PERF: Maybe change back to submit and wait.
@@ -129,9 +121,8 @@ void TcpServer::Dispatch()
 
 void TcpServer::Close(Container::List<ConnectionHandle>* conn_handles)
 {
-    ConnectionEventArgs args = { conn_handles, nullptr };
-
-    while (!conn_event_args.Enqueue(args))
+    ResponseArgs args = { conn_handles, nullptr };
+    while (!response_args.Enqueue(args))
     {
         std::this_thread::yield();
     }
@@ -151,11 +142,11 @@ void TcpServer::Send(Container::List<ConnectionHandle>* conn_handles, ResponseBa
         std::this_thread::yield();
     }
 
-    ConnectionEventArgs args = { conn_handles, buf };
-    resp->Pack(args);
-    response_pool->Release(resp);
+    // TODO: If non-thread safe container okey?
+    ResponseArgs args = { conn_handles, buf, resp->Pack(buf) };
+    response_allocator->Release(resp);
 
-    while (!conn_event_args.Enqueue(args))
+    while (!response_args.Enqueue(args))
     {
         std::this_thread::yield();
     }
@@ -167,13 +158,13 @@ void TcpServer::Send(Container::List<ConnectionHandle>* conn_handles, ResponseBa
     }
 }
 
-void TcpServer::ProcessEvent(IOEventArgs* args, int32 res, uint32 flags)
+void TcpServer::ProcessIOEvent(IOEventArgs* args, int32 res, uint32 flags)
 {
     if (args->conn != nullptr && args->conn->version != args->conn_ver)
     {
         if ((flags & IORING_CQE_F_BUFFER) != 0)
         {
-            io_ctx.AddBufferToRing(flags >> IORING_CQE_BUFFER_SHIFT);
+            io_ctx.ReturnBuffer(flags >> IORING_CQE_BUFFER_SHIFT);
         }
 
         if ((flags & IORING_CQE_F_MORE) == 0)
@@ -234,7 +225,7 @@ void TcpServer::CloseInternal(Connection* conn)
     }
 
     conn_pool.Release(conn);
-    conn_events.Enqueue({ ConnectionEvent::Type::Disconnect, ConnectionHandle(conn) });
+    sock_events.Enqueue({ ServerSocketEvent::Type::Disconnect, ConnectionHandle(conn) });
 }
 
 inline void TcpServer::PollInternal(IOEventArgs* args)
@@ -274,22 +265,22 @@ inline void TcpServer::SendInternal(IOEventArgs* args, const void* buf, int32 le
 void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
 {
     uint64 tail = poll_tail.load(std::memory_order_acquire);
-    ConnectionEventArgs conn_args;
-    while (conn_event_args.Dequeue(conn_args)) // TODO: Can batch pop.
+    ResponseArgs resp_args;
+    while (response_args.Dequeue(resp_args)) // TODO: Can batch pop.
     {
-        if (conn_args.buffer == nullptr)
+        if (resp_args.buffer == nullptr)
         {
-            for (ConnectionHandle& conn_handle : *(conn_args.conn_handles))
+            for (ConnectionHandle& conn_handle : *(resp_args.conn_handles))
             {
                 CloseInternal(conn_handle);
             }
         }
         else
         {
-            auto& send_meta = BufferMetadata::Get(conn_args.buffer, BUF_META_OFFSET).send;
-            send_meta.conn_count = conn_args.conn_handles->size();
-            send_meta.size = conn_args.length;
-            for (ConnectionHandle& conn_handle : *(conn_args.conn_handles))
+            auto& send_meta = BufferMetadata::Get(resp_args.buffer, BUF_META_OFFSET).send;
+            send_meta.conn_count = resp_args.conn_handles->size();
+            send_meta.size = resp_args.length;
+            for (ConnectionHandle& conn_handle : *(resp_args.conn_handles))
             {
                 if (conn_handle.version != conn_handle.conn->version)
                 {
@@ -301,11 +292,11 @@ void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
                 if (ctx.pending_bytes > 0)
                 {
                     // PERF: Merge packets if size less than threshold.
-                    ctx.pending_responses.push(conn_args.buffer);
+                    ctx.pending_responses.push(resp_args.buffer);
                 }
                 else
                 {
-                    ctx.buffer = conn_args.buffer;
+                    ctx.buffer = resp_args.buffer;
                     ctx.pending_bytes = send_meta.size;
                     ctx.processed_bytes = 0;
 
@@ -321,7 +312,7 @@ void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
 
             if (send_meta.conn_count <= 0)
             {
-                while (!io_ctx.send_buf_pool.Release(conn_args.buffer)) { }
+                while (!io_ctx.send_buf_pool.Release(resp_args.buffer)) { }
             }
         }
     }
@@ -360,7 +351,7 @@ void TcpServer::OnAccept(IOEventArgs* args, int32 res, uint32 flags)
     {
         Connection* conn = conn_pool.Acquire();
         conn->sock_fd = res;
-        conn_events.Enqueue({ ConnectionEvent::Type::Connect, ConnectionHandle(conn) });
+        sock_events.Enqueue({ ServerSocketEvent::Type::Connect, ConnectionHandle(conn) });
 
         IOEventArgs* args = event_args_pool.Acquire();
         args->op = SocketOp::Receive;
@@ -401,7 +392,7 @@ void TcpServer::OnReceive(IOEventArgs* args, int32 res, uint32 flags)
 
         if ((flags & IORING_CQE_F_BUFFER) != 0)
         {
-            io_ctx.AddBufferToRing(flags >> IORING_CQE_BUFFER_SHIFT);
+            io_ctx.ReturnBuffer(flags >> IORING_CQE_BUFFER_SHIFT);
         }
 
         if ((flags & IORING_CQE_F_MORE) == 0)
@@ -428,7 +419,7 @@ void TcpServer::OnReceive(IOEventArgs* args, int32 res, uint32 flags)
                     ctx.waiting_bytes -= received_bytes;
                     ctx.received_bytes += received_bytes;
 
-                    io_ctx.AddBufferToRing(bid);
+                    io_ctx.ReturnBuffer(bid);
                     return;
                 }
 
@@ -452,7 +443,7 @@ void TcpServer::OnReceive(IOEventArgs* args, int32 res, uint32 flags)
                 }
                 else
                 {
-                    RequestBase* req = request_pool->Acquire(ctx.buffer);
+                    RequestBase* req = request_allocator->Acquire(ctx.buffer);
                     req->conn_handle = ConnectionHandle(args->conn);
                     while (!requests.Enqueue(req))
                     {
@@ -482,7 +473,7 @@ void TcpServer::OnReceive(IOEventArgs* args, int32 res, uint32 flags)
                 }
                 else
                 {
-                    RequestBase* req = request_pool->Acquire(buf + processed_bytes);
+                    RequestBase* req = request_allocator->Acquire(buf + processed_bytes);
                     req->conn_handle = ConnectionHandle(args->conn);
                     while (!requests.Enqueue(req))
                     {
@@ -502,7 +493,7 @@ void TcpServer::OnReceive(IOEventArgs* args, int32 res, uint32 flags)
                 std::memcpy(ctx.buffer, buf + processed_bytes, received_bytes);
             }
 
-            io_ctx.AddBufferToRing(bid);
+            io_ctx.ReturnBuffer(bid);
         }
 
         if ((flags & IORING_CQE_F_MORE) == 0)
