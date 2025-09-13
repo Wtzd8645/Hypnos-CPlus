@@ -1,7 +1,7 @@
 #pragma once
 
-#include <Hypnos-Kernel/Encoding/Base128Varints.hpp>
-#include <Hypnos-Kernel/Encoding/ZigZag.hpp>
+#include <Hypnos-Core/Encoding/Base128Varints.hpp>
+#include <Hypnos-Core/Encoding/ZigZag.hpp>
 #include <cstring>
 
 namespace Blanketmen {

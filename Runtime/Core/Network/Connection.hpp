@@ -1,7 +1,7 @@
 #pragma once
 
 #include "NetworkDefs.hpp"
-#include <Hypnos-Kernel/Container/Queue.hpp>
+#include <Hypnos-Core/Container/Queue.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

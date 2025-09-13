@@ -7,7 +7,7 @@
 #include "RequestAllocatorBase.hpp"
 #include "ResponseAllocatorBase.hpp"
 #include "ServerSocketBase.hpp"
-#include <Hypnos-Kernel/Cache/ObjectPool.hpp>
+#include <Hypnos-Core/Cache/ObjectPool.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

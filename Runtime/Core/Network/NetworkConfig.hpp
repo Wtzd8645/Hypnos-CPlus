@@ -3,7 +3,7 @@
 #include "NetworkDefs.hpp"
 #include "RequestAllocatorBase.hpp"
 #include "ResponseAllocatorBase.hpp"
-#include <Hypnos-Kernel/Container/List.hpp>
+#include <Hypnos-Core/Container/List.hpp>
 #include <netinet/in.h>
 
 namespace Blanketmen {

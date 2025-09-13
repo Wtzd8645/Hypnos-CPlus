@@ -3,7 +3,7 @@
 #include "Connection.hpp"
 #include "NetworkDefs.hpp"
 #include "PacketWriter.hpp"
-#include <Hypnos-Kernel/Container/List.hpp>
+#include <Hypnos-Core/Container/List.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

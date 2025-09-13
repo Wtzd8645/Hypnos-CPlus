@@ -1,10 +1,10 @@
 #pragma once
 
 #include "SocketBase.hpp"
-#include <Hypnos-Kernel/Cache/TrackedObjectPool.hpp>
-#include <Hypnos-Kernel/Container/List.hpp>
-#include <Hypnos-Kernel/Container/SpscRingBuffer.hpp>
-#include <Hypnos-Kernel/Mediation/EventHandlerBase.hpp>
+#include <Hypnos-Core/Cache/TrackedObjectPool.hpp>
+#include <Hypnos-Core/Container/List.hpp>
+#include <Hypnos-Core/Container/SpscRingBuffer.hpp>
+#include <Hypnos-Core/Mediation/EventHandlerBase.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

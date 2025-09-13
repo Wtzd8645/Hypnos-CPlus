@@ -1,8 +1,8 @@
 #pragma once
 
-#include <Hypnos-Kernel/Base/Memory/MemoryUtils.hpp>
-#include <Hypnos-Kernel/Container/ForwardList.hpp>
-#include <Hypnos-Kernel/Container/List.hpp>
+#include <Hypnos-Core/Base/Memory/MemoryUtils.hpp>
+#include <Hypnos-Core/Container/ForwardList.hpp>
+#include <Hypnos-Core/Container/List.hpp>
 #include <sys/mman.h>
 
 namespace Blanketmen {

@@ -2,7 +2,7 @@
 
 #include "Connection.hpp"
 #include "IOBufferPool.hpp"
-#include <Hypnos-Kernel/Cache/SpscBufferPool.hpp>
+#include <Hypnos-Core/Cache/SpscBufferPool.hpp>
 #include <liburing.h>
 #include <sys/eventfd.h>
 

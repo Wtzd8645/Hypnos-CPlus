@@ -20,7 +20,7 @@ target_include_directories(Hypnos-Runtime
     INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../Include"
 )
 
-target_link_libraries(Hypnos-Runtime PUBLIC Hypnos-Kernel)
+target_link_libraries(Hypnos-Runtime PUBLIC Hypnos-Core)
 if (UNIX)
     target_link_libraries(Hypnos-Runtime PRIVATE uring pthread)
 endif ()
