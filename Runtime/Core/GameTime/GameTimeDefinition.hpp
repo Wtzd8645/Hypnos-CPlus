@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Platform.hpp>
-
 namespace Blanketmen {
 namespace Hypnos {
 namespace GameTime {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Hypnos-Kernel.hpp>
 #include <cstring>
 
 namespace Blanketmen {
@@ -47,17 +46,17 @@ struct PacketWriter
 
     inline static void WriteVarint32(uint8* buffer, int32& offset, int32 value)
     {
-        Encoding::Base128Varints::WriteUInt32(static_cast<uint32>(value), buffer, offset);
+        Base128Varints::WriteUInt32(static_cast<uint32>(value), buffer, offset);
     }
 
     inline static void WriteUVarint32(uint8* buffer, int32& offset, uint32 value)
     {
-        Encoding::Base128Varints::WriteUInt32(value, buffer, offset);
+        Base128Varints::WriteUInt32(value, buffer, offset);
     }
 
     inline static void WriteSVarint32(uint8* buffer, int32& offset, int32 value)
     {
-        Encoding::Base128Varints::WriteUInt32(Encoding::ZigZag::Encode(value), buffer, offset);
+        Base128Varints::WriteUInt32(ZigZag::Encode(value), buffer, offset);
     }
 
     inline static void WriteInt64(uint8* buffer, int32& offset, int64 value)
@@ -74,17 +73,17 @@ struct PacketWriter
 
     inline static void WriteVarint64(uint8* buffer, int32& offset, int64 value)
     {
-        Encoding::Base128Varints::WriteUInt64(static_cast<uint64>(value), buffer, offset);
+        Base128Varints::WriteUInt64(static_cast<uint64>(value), buffer, offset);
     }
 
     inline static void WriteUVarint64(uint8* buffer, int32& offset, uint64 value)
     {
-        Encoding::Base128Varints::WriteUInt64(value, buffer, offset);
+        Base128Varints::WriteUInt64(value, buffer, offset);
     }
 
     inline static void WriteSVarint64(uint8* buffer, int32& offset, int64 value)
     {
-        Encoding::Base128Varints::WriteUInt64(Encoding::ZigZag::Encode(value), buffer, offset);
+        Base128Varints::WriteUInt64(ZigZag::Encode(value), buffer, offset);
     }
 
     inline static void WriteFloat32(uint8* buffer, int32& offset, float32 value)
@@ -102,7 +101,7 @@ struct PacketWriter
     inline static void WriteString(uint8* buffer, int32& offset, string& value)
     {
         uint32 len = value.length();
-        Encoding::Base128Varints::WriteUInt32(len, buffer, offset);
+        Base128Varints::WriteUInt32(len, buffer, offset);
         std::memcpy(buffer + offset, value.c_str(), len);
         offset += len;
     }

@@ -3,6 +3,7 @@
 #include "Connection.hpp"
 #include "NetworkDefs.hpp"
 #include "PacketWriter.hpp"
+#include <Hypnos-Kernel/Container/List.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -10,7 +11,7 @@ namespace Network {
 
 struct ResponseArgs
 {
-    Container::List<ConnectionHandle>* conn_handles;
+    List<ConnectionHandle>* conn_handles;
     uint8* buffer;
     packet_size length;
 };

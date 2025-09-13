@@ -10,7 +10,7 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-TcpServer::TcpServer(SocketConfig& cfg, IOUringContext& ctx) : ServerSocketBase(cfg, ctx) { }
+TcpServer::TcpServer(SocketConfig& cfg, IOContext& ctx) : ServerSocketBase(cfg, ctx) { }
 
 TcpServer::~TcpServer()
 {
@@ -79,14 +79,14 @@ void TcpServer::Stop()
     }
 
     Logging::Info("[TcpSocket] Closing all active connections");
-    for (auto& conn : conn_pool)
+    for (auto& conn : conntions)
     {
         if (conn.sock_fd > INVALID_FD)
         {
             CloseInternal(&conn);
         }
     }
-    conn_pool.Clear();
+    conntions.Clear();
 
     shutdown(sock_fd, SHUT_RDWR);
     close(sock_fd);
@@ -119,7 +119,7 @@ void TcpServer::Dispatch()
     }
 }
 
-void TcpServer::Close(Container::List<ConnectionHandle>* conn_handles)
+void TcpServer::Close(List<ConnectionHandle>* conn_handles)
 {
     ResponseArgs args = { conn_handles, nullptr };
     while (!response_args.Enqueue(args))
@@ -134,7 +134,7 @@ void TcpServer::Close(Container::List<ConnectionHandle>* conn_handles)
     }
 }
 
-void TcpServer::Send(Container::List<ConnectionHandle>* conn_handles, ResponseBase* resp)
+void TcpServer::Send(List<ConnectionHandle>* conn_handles, ResponseBase* resp)
 {
     uint8* buf;
     while (!io_ctx.send_buf_pool.Acquire(buf))
@@ -224,7 +224,7 @@ void TcpServer::CloseInternal(Connection* conn)
         }
     }
 
-    conn_pool.Release(conn);
+    conntions.Release(conn);
     sock_events.Enqueue({ ServerSocketEvent::Type::Disconnect, ConnectionHandle(conn) });
 }
 
@@ -349,7 +349,7 @@ void TcpServer::OnAccept(IOEventArgs* args, int32 res, uint32 flags)
 
     if (res >= 0)
     {
-        Connection* conn = conn_pool.Acquire();
+        Connection* conn = conntions.Acquire();
         conn->sock_fd = res;
         sock_events.Enqueue({ ServerSocketEvent::Type::Connect, ConnectionHandle(conn) });
 

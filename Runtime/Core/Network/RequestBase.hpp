@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Connection.hpp"
 #include "NetworkDefs.hpp"
 #include "PacketReader.hpp"
-#include <Hypnos-Kernel.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {

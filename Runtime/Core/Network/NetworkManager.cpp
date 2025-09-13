@@ -1,4 +1,4 @@
-﻿#include "NetworkDefs.hpp"
+#include "NetworkDefs.hpp"
 #include "NetworkManager.hpp"
 #include "TcpServer.hpp"
 #include <unordered_set>
@@ -17,37 +17,64 @@ void NetworkManager::Initialize()
         max_conns += cfg.max_conns;
     }
 
-    io_ctx = new IOUringContext(max_conns);
-    io_ctx->Setup();
+    io_ctx = new IOContext(max_conns);
+    if (io_ctx->Setup() != 0)
+    {
+        throw std::runtime_error("[NetworkManager] Failed to setup io_uring context.");
+    }
 
-    // TODO: Set sockets.
+    servers.reserve(config.server_configs.size());
     for (auto& cfg : config.server_configs)
     {
         switch (cfg.protocol)
         {
             case TransportProtocol::TCP:
             {
-                TcpServer* server = new TcpServer(cfg, *io_ctx);
+                servers[cfg.id] = new TcpServer(cfg, *io_ctx);
                 break;
+            }
+            default:
+            {
+                throw std::runtime_error("[NetworkManager] Unsupported transport protocol.");
             }
         }
     }
+
+    for (auto& server : servers)
+    {
+        if (server != nullptr)
+        {
+            sockets.push_back(server);
+        }
+    }
+
+    io_thread = new Thread([this]()
+    {
+        ProcessIOEvents();
+    });
 }
 
 void NetworkManager::Release()
 {
-    if (io_ctx == nullptr)
+    if (io_thread != nullptr)
     {
-        return;
+        running.store(false, std::memory_order_release);
+        io_thread->join();
+        delete io_thread;
+        io_thread = nullptr;
     }
 
-    delete io_ctx;
-    io_ctx = nullptr;
+    if (io_ctx != nullptr)
+    {
+        delete io_ctx;
+        io_ctx = nullptr;
+    }
 
     for (auto& sock : sockets)
     {
         delete sock;
     }
+    sockets.clear();
 }
 
 void NetworkManager::ProcessIOEvents()
@@ -55,7 +82,7 @@ void NetworkManager::ProcessIOEvents()
     io_uring* ring = &io_ctx->ring;
     int32 res;
     io_uring_cqe* cqes;
-    uint32 cq_head;
+    uint32 head;
     io_uring_cqe* cqe;
     running.store(true, std::memory_order_relaxed);
     while (running)
@@ -67,17 +94,15 @@ void NetworkManager::ProcessIOEvents()
             continue;
         }
 
-        io_uring_for_each_cqe(ring, cq_head, cqe)
+        io_uring_for_each_cqe(ring, head, cqe)
         {
             IOEventArgs* args = static_cast<IOEventArgs*>(io_uring_cqe_get_data(cqe));
             sockets[args->sock_id]->ProcessIOEvent(args, cqe->res, cqe->flags);
         }
 
         io_ctx->AdvanceBufRing();
-        io_ctx->AdvanceCqRing(cq_head);
+        io_ctx->AdvanceCqeRing(head);
     }
-
-    Release();
 }
 
 void NetworkManager::OnCqeError(int32 err)
@@ -91,7 +116,7 @@ void NetworkManager::OnCqeError(int32 err)
     }
     else
     {
-        Logging::Error("[TcpSocket] Failed to wait for CQE.");
+        Logging::Error("[TcpSocket] Failed to wait for CQE. %s", strerror(err));
         running.store(false, std::memory_order_release);
     }
 }

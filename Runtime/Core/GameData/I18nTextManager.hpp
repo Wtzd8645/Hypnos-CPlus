@@ -1,10 +1,9 @@
 #pragma once
 
-#include <Hypnos-Kernel/Base.hpp>
 #include <fcntl.h>
-#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 
 namespace Blanketmen {

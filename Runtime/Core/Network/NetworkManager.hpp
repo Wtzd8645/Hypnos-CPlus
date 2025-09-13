@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "IOUringContext.hpp"
+#include "IOContext.hpp"
 #include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
 #include "ServerSocketBase.hpp"
@@ -48,11 +48,11 @@ public:
 private:
     alignas(CACHE_LINE_SIZE) Atomic<bool> running;
 
-    Thread io_thread;
-    IOUringContext* io_ctx;
+    Thread* io_thread;
+    IOContext* io_ctx;
 
-    Container::List<SocketBase*> sockets;
-    Container::List<ServerSocketBase*> servers;
+    List<SocketBase*> sockets;
+    List<ServerSocketBase*> servers;
 
     void ProcessIOEvents();
     void OnCqeError(int32 err);

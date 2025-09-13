@@ -1,12 +1,12 @@
-#include "IOUringContext.hpp"
+#include "IOContext.hpp"
 #include "ServerSocketBase.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-ServerSocketBase::ServerSocketBase(SocketConfig& cfg, IOUringContext& ctx) : SocketBase(cfg, ctx),
-    conn_pool(cfg.max_conns),
+ServerSocketBase::ServerSocketBase(SocketConfig& cfg, IOContext& ctx) : SocketBase(cfg, ctx),
+    conntions(cfg.max_conns),
     sock_events(cfg.max_conns),
     requests(cfg.max_conns),
     request_allocator(cfg.request_allocator),

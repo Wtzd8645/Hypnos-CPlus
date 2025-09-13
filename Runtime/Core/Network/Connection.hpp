@@ -1,7 +1,7 @@
 #pragma once
 
 #include "NetworkDefs.hpp"
-#include <Hypnos-Kernel/Core/Container.hpp>
+#include <Hypnos-Kernel/Container/Queue.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -20,7 +20,7 @@ struct SendContext
     uint8* buffer = nullptr;
     packet_size pending_bytes = 0;
     packet_size processed_bytes = 0;
-    Container::Queue<uint8*> pending_responses;
+    Queue<uint8*> pending_responses;
 };
 
 struct Connection

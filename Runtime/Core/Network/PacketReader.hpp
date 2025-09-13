@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Hypnos-Kernel.hpp>
+#include <Hypnos-Kernel/Encoding/Base128Varints.hpp>
+#include <Hypnos-Kernel/Encoding/ZigZag.hpp>
 #include <cstring>
 
 namespace Blanketmen {
@@ -47,17 +48,17 @@ struct PacketReader
 
     inline static void ReadVarint32(uint8* buffer, int32& offset, int32& result)
     {
-        result = static_cast<int32>(Encoding::Base128Varints::ReadUInt32(buffer, offset));
+        result = static_cast<int32>(Base128Varints::ReadUInt32(buffer, offset));
     }
 
     inline static void ReadUVarint32(uint8* buffer, int32& offset, uint32& result)
     {
-        result = Encoding::Base128Varints::ReadUInt32(buffer, offset);
+        result = Base128Varints::ReadUInt32(buffer, offset);
     }
 
     inline static void ReadSVarint32(uint8* buffer, int32& offset, int32& result)
     {
-        result = Encoding::ZigZag::Decode(Encoding::Base128Varints::ReadUInt32(buffer, offset));
+        result = ZigZag::Decode(Base128Varints::ReadUInt32(buffer, offset));
     }
 
     inline static void ReadInt64(uint8* buffer, int32& offset, int64& result)
@@ -74,17 +75,17 @@ struct PacketReader
 
     inline static void ReadVarint64(uint8* buffer, int32& offset, int64& result)
     {
-        result = static_cast<int64>(Encoding::Base128Varints::ReadUInt64(buffer, offset));
+        result = static_cast<int64>(Base128Varints::ReadUInt64(buffer, offset));
     }
 
     inline static void ReadUVarint64(uint8* buffer, int32& offset, uint64& result)
     {
-        result = Encoding::Base128Varints::ReadUInt64(buffer, offset);
+        result = Base128Varints::ReadUInt64(buffer, offset);
     }
 
     inline static void ReadSVarint64(uint8* buffer, int32& offset, int64& result)
     {
-        result = Encoding::ZigZag::Decode(Encoding::Base128Varints::ReadUInt64(buffer, offset));
+        result = ZigZag::Decode(Base128Varints::ReadUInt64(buffer, offset));
     }
 
     inline static void ReadFloat32(uint8* buffer, int32& offset, float32& result)
@@ -101,7 +102,7 @@ struct PacketReader
 
     inline static void ReadString(uint8* buffer, int32& offset, string& result)
     {
-        uint32 len = Encoding::Base128Varints::ReadUInt32(buffer, offset);
+        uint32 len = Base128Varints::ReadUInt32(buffer, offset);
         result.assign(reinterpret_cast<char8*>(buffer + offset), len);
         offset += len;
     }

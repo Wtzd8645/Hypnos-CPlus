@@ -1,5 +1,4 @@
 #include "Network/NetworkTest.hpp"
-#include <Hypnos-Kernel.hpp>
 #include <iostream>
 
 using namespace Blanketmen;

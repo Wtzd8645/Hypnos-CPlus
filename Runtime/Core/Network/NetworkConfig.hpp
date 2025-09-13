@@ -3,6 +3,7 @@
 #include "NetworkDefs.hpp"
 #include "RequestAllocatorBase.hpp"
 #include "ResponseAllocatorBase.hpp"
+#include <Hypnos-Kernel/Container/List.hpp>
 #include <netinet/in.h>
 
 namespace Blanketmen {
@@ -23,7 +24,7 @@ struct SocketConfig
 
 struct NetworkConfig
 {
-    Container::List<SocketConfig> server_configs;
+    List<SocketConfig> server_configs;
 };
 
 } // namespace Network

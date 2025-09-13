@@ -1,9 +1,8 @@
 #pragma once
 
 #include "Connection.hpp"
-#include "IOUringBufferPool.hpp"
-#include <Hypnos-Kernel/Core/Cache.hpp>
-#include <cstring>
+#include "IOBufferPool.hpp"
+#include <Hypnos-Kernel/Cache/SpscBufferPool.hpp>
 #include <liburing.h>
 #include <sys/eventfd.h>
 
@@ -13,10 +12,7 @@ namespace Network {
 
 union BufferMetadata
 {
-    inline static BufferMetadata& Get(uint8* buf, uint32 offset)
-    {
-        return *reinterpret_cast<BufferMetadata*>(buf + offset);
-    }
+    inline static BufferMetadata& Get(uint8* buf, uint32 offset) { return *reinterpret_cast<BufferMetadata*>(buf + offset); }
 
     struct
     {
@@ -50,9 +46,8 @@ struct IOEventArgs
     Connection* conn;
 };
 
-class IOUringContext
+struct IOContext
 {
-public:
     int32 efd;
     io_uring ring;
     io_uring_params ring_params;
@@ -61,21 +56,23 @@ public:
     int32 recv_buf_mask;
     int32 recv_buf_count;
 
-    IOUringBufferPool recv_buf_pool;
-    Cache::SPSC::MmapBufferPool send_buf_pool;
+    IOBufferPool recv_buf_pool;
+    SpscBufferPool send_buf_pool;
 
-    IOUringContext(uint32 max_conns) :
+    const size_t max_conns;
+
+    IOContext(uint32 max_conns) :
         efd(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)),
-        recv_buf_pool(MAX_BUFFER_SIZE, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB, max_conns),
-        send_buf_pool(MAX_BUFFER_SIZE, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB, max_conns),
+        recv_buf_pool(MAX_BUFFER_SIZE, max_conns, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB),
+        send_buf_pool(MAX_BUFFER_SIZE, max_conns, MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB),
         max_conns(max_conns)
     {
         std::memset(&ring_params, 0, sizeof(ring_params));
-        ring_params.flags = IORING_SETUP_SQPOLL | IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN; // TODO: Make configurable.
+        ring_params.flags = IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN; // TODO: Make configurable.
         ring_params.sq_thread_idle = 8000;
     }
 
-    ~IOUringContext()
+    ~IOContext()
     {
         if (efd >= 0)
         {
@@ -95,7 +92,7 @@ public:
         int32 err = io_uring_queue_init_params(max_conns, &ring, &ring_params);
         if (err < 0)
         {
-            Logging::Error("[TcpSocket] Failed to initialize io_uring.");
+            Logging::Error("[TcpSocket] Failed to initialize io_uring. Error: %s", strerror(-err));
             return err;
         }
 
@@ -129,13 +126,10 @@ public:
         }
     }
 
-    inline void AdvanceCqRing(uint32 head)
+    inline void AdvanceCqeRing(uint32 head)
     {
         io_uring_cq_advance(&ring, head - ring.cq.khead[0]);
     }
-
-private:
-    size_t max_conns;
 };
 
 } // namespace Network

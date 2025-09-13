@@ -29,7 +29,7 @@ public:
 
     const uint8 id;
 
-    SocketBase(SocketConfig& cfg, IOUringContext& ctx) : id(cfg.id), sock_fd(INVALID_FD), version(0), io_ctx(ctx) { }
+    SocketBase(SocketConfig& cfg, IOContext& ctx) : id(cfg.id), sock_fd(INVALID_FD), version(0), io_ctx(ctx) { }
 
     virtual ~SocketBase() = default;
 
@@ -42,7 +42,7 @@ public:
 protected:
     int32 sock_fd;
     uint8 version;
-    IOUringContext& io_ctx;
+    IOContext& io_ctx;
 };
 
 } // namespace Network
