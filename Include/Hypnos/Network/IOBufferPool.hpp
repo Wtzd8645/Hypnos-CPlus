@@ -19,7 +19,7 @@ public:
     {
         this->size = MemoryUtils::AlignUp(size > MIN_BUFFER_SIZE ? size : MIN_BUFFER_SIZE, alignof(uint8*));
         mmap_flags |= flags;
-        Allocate(1);// cap > MIN_BUFFER_CAPACITY ? cap : MIN_BUFFER_CAPACITY);
+        Allocate(cap > MIN_BUFFER_CAPACITY ? cap : MIN_BUFFER_CAPACITY);
     }
 
     ~IOBufferPool()

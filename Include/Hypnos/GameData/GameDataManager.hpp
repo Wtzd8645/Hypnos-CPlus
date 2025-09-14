@@ -57,16 +57,16 @@ struct NArray
 public:
     inline int32 Length() const noexcept { return length; }
 
-    inline T operator[](size_t index) const
+    inline T operator[](uint32 index) const
     {
-        if (pointer == nullptr || index < 0 || index >= length)
+        if (pointer == nullptr || index >= length)
         {
             // throw new AccessViolationException();
         }
         return *(pointer + index);
     }
 
-    NArray(T* ptr, int32 len)
+    NArray(T* ptr, uint32 len)
     {
         pointer = ptr;
         length = len;
@@ -74,7 +74,7 @@ public:
 
 private:
     T* pointer;
-    int32 length;
+    uint32 length;
 };
 
 template<typename T>
@@ -83,9 +83,9 @@ struct NStructArray
 public:
     inline int32 Length() const noexcept { return length; }
 
-    inline T operator[](size_t index) const
+    inline T operator[](uint32 index) const
     {
-        if (pointer == nullptr || index < 0 || index >= length)
+        if (pointer == nullptr || index >= length)
         {
             // throw new AccessViolationException();
         }
@@ -93,7 +93,7 @@ public:
         return T(pointer + index * structSize);
     }
 
-    NStructArray(uint8* ptr, int32 size, int32 len)
+    NStructArray(uint8* ptr, uint32 size, uint32 len)
     {
         pointer = ptr;
         structSize = size;
@@ -101,60 +101,60 @@ public:
     }
 
 private:
-    int32 length;
     uint8* pointer;
-    int32 structSize;
+    uint32 length;
+    uint32 structSize;
 };
 
 struct NStringArray
 {
 public:
-    inline int32 Length() const noexcept { return length; }
+    inline uint32 Length() const noexcept { return length; }
 
-    inline string operator[](size_t index) const
+    inline string operator[](uint32 index) const
     {
-        if (pointer == nullptr || index < 0 || index >= length)
+        if (pointer == nullptr || index >= length)
         {
             // throw new AccessViolationException();
         }
         return GameDataManager::Instance().GetString(*(pointer + index));
     }
 
-    NStringArray(int32* ptr, int32 len)
+    NStringArray(uint32* ptr, uint32 len)
     {
         pointer = ptr;
         length = len;
     }
 
 private:
-    int32 length;
-    int32* pointer;
+    uint32* pointer;
+    uint32 length;
 };
 
 template<typename T>
 struct NReferenceArray
 {
 public:
-    inline int32 Length() const noexcept { return length; }
+    inline uint32 Length() const noexcept { return length; }
 
-    inline T operator[](size_t index) const
+    inline T operator[](uint32 index) const
     {
-        if (pointer == nullptr || index < 0 || index >= length)
+        if (pointer == nullptr || index >= length)
         {
             // throw new AccessViolationException();
         }
         return T(GameDataManager::Instance().GetDataPointer(*(pointer + index)));
     }
 
-    NReferenceArray(int32* ptr, int32 len)
+    NReferenceArray(uint32* ptr, uint32 len)
     {
         pointer = ptr;
         length = len;
     }
 
 private:
-    int32 length;
-    int32* pointer;
+    uint32* pointer;
+    uint32 length;
 };
 
 } // namespace Hypnos

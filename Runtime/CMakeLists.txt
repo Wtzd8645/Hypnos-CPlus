@@ -13,16 +13,9 @@ add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
     "GameState/GameStateManager.cpp"
     "GameTime/GameTimeManager.cpp" "GameTime/CountdownTimer.cpp" "GameTime/LapTimer.cpp")
 
-target_compile_features(Hypnos INTERFACE cxx_std_20)
+target_compile_features(Hypnos PRIVATE cxx_std_20)
 
-set_target_properties(Hypnos PROPERTIES
-    CXX_STANDARD_REQUIRED YES
-    CXX_EXTENSIONS OFF
-    LINKER_LANGUAGE CXX)
-
-target_compile_options(Hypnos PRIVATE -stdlib=libc++)
-
-target_link_options(Hypnos PRIVATE -stdlib=libc++)
+target_compile_options(Hypnos PRIVATE -Wall -Wextra)
 
 target_include_directories(Hypnos PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../Include" 

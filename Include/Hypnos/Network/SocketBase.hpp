@@ -16,7 +16,7 @@ struct ServerSocketEvent
         Disconnect
     };
 
-    static constexpr size_t MAX_EVENT_TYPES = static_cast<size_t>(Type::Disconnect) + 1;
+    static constexpr int32 MAX_EVENT_TYPES = static_cast<int32>(Type::Disconnect) + 1;
 
     Type type;
     ConnectionHandle conn_handle;

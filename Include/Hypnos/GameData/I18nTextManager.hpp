@@ -59,24 +59,24 @@ struct NI18nTextArray
 public:
     inline int32 Length() const noexcept { return length; }
 
-    inline string operator[](size_t index) const
+    inline string operator[](uint32 index) const
     {
-        if (pointer == nullptr || index < 0 || index >= length)
+        if (pointer == nullptr || index >= length)
         {
             //throw new AccessViolationException();
         }
         return I18nTextManager::Instance().GetText(*(pointer + index));
     }
 
-    NI18nTextArray(uint32* ptr, int32 len)
+    NI18nTextArray(uint32* ptr, uint32 len)
     {
         pointer = ptr;
         length = len;
     }
 
 private:
-    int32 length;
     uint32* pointer;
+    uint32 length;
 };
 
 } // namespace Hypnos

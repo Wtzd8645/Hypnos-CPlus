@@ -121,7 +121,7 @@ void TcpServer::Dispatch()
 
 void TcpServer::Close(List<ConnectionHandle>* conn_handles)
 {
-    ResponseArgs args = { conn_handles, nullptr };
+    ResponseArgs args = { conn_handles, nullptr, 0 };
     while (!response_args.Enqueue(args))
     {
         std::this_thread::yield();
