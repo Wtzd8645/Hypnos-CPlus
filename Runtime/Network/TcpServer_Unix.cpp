@@ -1,5 +1,5 @@
-#include "NetworkDefs.hpp"
-#include "TcpServer.hpp"
+#include "Hypnos/Network/NetworkDefs.hpp"
+#include "Hypnos/Network/TcpServer.hpp"
 #include <liburing.h>
 #include <netinet/in.h>
 #include <sys/eventfd.h>

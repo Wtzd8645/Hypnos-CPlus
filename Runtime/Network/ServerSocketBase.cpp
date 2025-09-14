@@ -1,5 +1,5 @@
-#include "IOContext.hpp"
-#include "ServerSocketBase.hpp"
+#include "Hypnos/Network/IOContext.hpp"
+#include "Hypnos/Network/ServerSocketBase.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

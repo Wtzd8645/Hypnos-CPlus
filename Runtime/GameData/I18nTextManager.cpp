@@ -1,4 +1,4 @@
-#include "I18nTextManager.hpp"
+#include "Hypnos/GameData/I18nTextManager.hpp"
 #include <cstring>
 
 namespace Blanketmen {

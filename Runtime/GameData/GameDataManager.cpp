@@ -1,4 +1,4 @@
-#include "GameDataManager.hpp"
+#include "Hypnos/GameData/GameDataManager.hpp"
 #include <cstring>
 
 namespace Blanketmen {

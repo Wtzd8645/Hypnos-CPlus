@@ -1,5 +1,5 @@
-#include "GameTimeManager.hpp"
-#include "GameTimerBase.hpp"
+#include "Hypnos/GameTime/GameTimeManager.hpp"
+#include "Hypnos/GameTime/GameTimerBase.hpp"
 #include <thread>
 
 namespace Blanketmen {

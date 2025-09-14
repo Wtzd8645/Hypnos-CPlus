@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Hypnos/Network.hpp>
-
 namespace Blanketmen {
 namespace Hypnos {
 namespace Tests {

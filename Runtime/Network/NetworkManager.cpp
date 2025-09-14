@@ -1,6 +1,6 @@
-#include "NetworkDefs.hpp"
-#include "NetworkManager.hpp"
-#include "TcpServer.hpp"
+#include "Hypnos/Network/NetworkDefs.hpp"
+#include "Hypnos/Network/NetworkManager.hpp"
+#include "Hypnos/Network/TcpServer.hpp"
 #include <unordered_set>
 
 namespace Blanketmen {
