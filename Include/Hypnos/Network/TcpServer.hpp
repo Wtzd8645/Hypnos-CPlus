@@ -4,47 +4,57 @@
 #include "IOContext.hpp"
 #include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
-#include "RequestAllocatorBase.hpp"
-#include "ResponseAllocatorBase.hpp"
-#include "ServerSocketBase.hpp"
+#include "ServerBase.hpp"
+#include <Hypnos-Core/Cache/BufferPool.hpp>
 #include <Hypnos-Core/Cache/ObjectPool.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-class TcpServer : public ServerSocketBase
+class TcpServer : public ServerBase
 {
 public:
-    TcpServer(SocketConfig& cfg, IOContext& ctx);
+    TcpServer(uint32 id, const ServerConfig& cfg, IOContext& ctx);
     ~TcpServer();
 
-    void Start() override;
-    void Stop() override;
+    Status<void> Start() override;
+    Status<void> Stop() override;
 
+    void Process(const IOEvent& evt) override;
     void Dispatch() override;
-    void ProcessIOEvent(IOEventArgs* args, int32 res, uint32 flags) override;
 
     void Close(List<ConnectionHandle>* conn_handles) override;
-    void Send(List<ConnectionHandle>* conn_handles, ResponseBase* resp) override;
+    void Broadcast(IMessage* resp) override;
+    void Send(List<ConnectionHandle>* conn_handles, IMessage* resp) override;
 
 private:
-    static constexpr int32 IO_RECV_BUF_GROUP = 0;
+    alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_count { 0 };
 
-    alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_head { 0 };
-    alignas(CACHE_LINE_SIZE) Atomic<uint64> poll_tail { 0 };
-    ObjectPool<IOEventArgs> event_args_pool;
+    const ServerConfig cfg;
+    IOContext& io_ctx;
+    HeapObjectPool<IOEventArgs> event_args_pool;
+    BufferPool<MmapAllocatePolicy<MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB>> framing_buffer_pool;
+
+    IPacketCodec* packet_codec = nullptr;
+    IMessageCodec* message_codec = nullptr;
+    SpscRingBuffer<IMessage*> requests;
+
+    SpscRingBuffer<ResponseArgs> response_args;
 
     void CloseInternal(Connection* conn);
-    void PollInternal(IOEventArgs* args);
     void AcceptInternal(IOEventArgs* args);
     void ReceiveInternal(IOEventArgs* args);
+    void PollInternal(IOEventArgs* args);
     void SendInternal(IOEventArgs* args, const void* buf, int32 len);
 
-    void OnPoll(IOEventArgs* args, int32 res, uint32 flags);
-    void OnAccept(IOEventArgs* args, int32 res, uint32 flags);
-    void OnReceive(IOEventArgs* args, int32 res, uint32 flags);
-    void OnSend(IOEventArgs* args, int32 res, uint32 flags);
+    void ReleaseEventArgs(IOEventArgs* args, uint32 flags);
+    bool HandlePacket(const TransportHeader& header, byte* src);
+
+    void OnAccept(const IOEvent& evt);
+    void OnReceive(const IOEvent& evt);
+    void OnPoll(const IOEvent& evt);
+    void OnSend(const IOEvent& evt);
 };
 
 } // namespace Network

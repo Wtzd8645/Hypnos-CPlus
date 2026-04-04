@@ -29,7 +29,7 @@ public:
 
     const uint8 id;
 
-    SocketBase(SocketConfig& cfg, IOContext& ctx) : id(cfg.id), sock_fd(INVALID_FD), version(0), io_ctx(ctx) { }
+    SocketBase(uint32 id, ServerConfig& cfg, IOContext& ctx) : id(id), sock_fd(INVALID_FD), version(0), io_ctx(ctx) { }
 
     virtual ~SocketBase() = default;
 
@@ -40,6 +40,7 @@ public:
     virtual void ProcessIOEvent(IOEventArgs* args, int32 res, uint32 flags) = 0;
 
 protected:
+    uint32 id;
     int32 sock_fd;
     uint8 version;
     IOContext& io_ctx;

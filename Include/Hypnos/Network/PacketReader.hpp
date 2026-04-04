@@ -103,7 +103,7 @@ struct PacketReader
     inline static void ReadString(uint8* buffer, int32& offset, string& result)
     {
         uint32 len = Base128Varints::ReadUInt32(buffer, offset);
-        result.assign(reinterpret_cast<char8*>(buffer + offset), len);
+        result.assign(reinterpret_cast<char*>(buffer + offset), len);
         offset += len;
     }
 };

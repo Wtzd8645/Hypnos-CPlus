@@ -1,14 +1,10 @@
-cmake_minimum_required (VERSION 3.12)
-
-project(Hypnos VERSION 0.0.1 LANGUAGES CXX)
-
 if (UNIX)
     set(PLATFORM_IMPL_FILES
         "Network/NetworkUtils_Unix.cpp" "Network/TcpServer_Unix.cpp")
 endif ()
 
 add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
-    "Network/NetworkManager.cpp" "Network/ServerSocketBase.cpp"
+    "Network/NetworkManager.cpp" "Network/ServerBase.cpp"
     "GameData/GameDataManager.cpp" "GameData/I18nTextManager.cpp"
     "GameState/GameStateManager.cpp"
     "GameTime/GameTimeManager.cpp" "GameTime/CountdownTimer.cpp" "GameTime/LapTimer.cpp")
@@ -16,6 +12,12 @@ add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
 target_compile_features(Hypnos PRIVATE cxx_std_20)
 
 target_compile_options(Hypnos PRIVATE -Wall -Wextra)
+target_compile_options(Hypnos PRIVATE
+    $<$<CONFIG:Debug>:-g -O0 -DDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:-g -O2 -DDEBUG>
+    $<$<CONFIG:Release>:-O3 -DNDEBUG>
+    $<$<CONFIG:MinSizeRel>:-Os -DNDEBUG>
+)
 
 target_include_directories(Hypnos PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../Include" 

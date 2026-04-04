@@ -9,18 +9,17 @@ namespace Network {
 
 struct RecvContext
 {
-    uint8 buffer[MAX_BUFFER_SIZE];
-    packet_size packet_bytes = 0;
-    packet_size waiting_bytes = sizeof(packet_size);
     packet_size received_bytes = 0;
+    TransportHeader header = { };
+    byte* buffer = nullptr;
 };
 
 struct SendContext
 {
-    uint8* buffer = nullptr;
     packet_size pending_bytes = 0;
     packet_size processed_bytes = 0;
-    Queue<uint8*> pending_responses;
+    Queue<byte*> pending_responses;
+    byte* buffer = nullptr;
 };
 
 struct Connection
@@ -36,9 +35,25 @@ struct ConnectionHandle
     Connection* conn;
     uint8 version;
 
-    inline ConnectionHandle() : conn(nullptr), version(0) { }
-    inline ConnectionHandle(Connection* conn) : conn(conn), version(conn->version) { }
-    inline operator Connection* () { return conn; }
+    ConnectionHandle() : conn(nullptr), version(0) { }
+    ConnectionHandle(Connection* conn) : conn(conn), version(conn->version) { }
+
+    operator Connection* () { return conn; }
+};
+
+struct ConnectionEvent
+{
+    enum class Type : uint8
+    {
+        None,
+        Connected,
+        Disconnected,
+
+        Count
+    };
+
+    Type type;
+    ConnectionHandle conn_handle;
 };
 
 } // namespace Network

@@ -6,11 +6,11 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-// Base class for request messages
-class RequestBase
+// Base class for response messages
+class Response
 {
 public:
-    virtual ~RequestBase() = default;
+    virtual ~Response() = default;
 
     virtual packet_size Pack(uint8* buf) = 0;
     virtual void Unpack(const uint8* buf, int32 len) = 0;

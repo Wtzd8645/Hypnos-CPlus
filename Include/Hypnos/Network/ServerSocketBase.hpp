@@ -1,10 +1,10 @@
 #pragma once
 
 #include "SocketBase.hpp"
-#include <Hypnos-Core/Cache/TrackedObjectPool.hpp>
+#include <Hypnos-Core/Cache/SparseObjectPool.hpp>
 #include <Hypnos-Core/Container/List.hpp>
 #include <Hypnos-Core/Container/SpscRingBuffer.hpp>
-#include <Hypnos-Core/Mediation/EventHandlerBase.hpp>
+#include <Hypnos-Core/Mediation/IEventHandler.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -17,22 +17,22 @@ public:
     virtual ~ServerSocketBase() = default;
 
     virtual void Close(List<ConnectionHandle>* conn_handles) = 0;
-    virtual void Send(List<ConnectionHandle>* conns, ResponseBase* resp) = 0;
+    virtual void Send(List<ConnectionHandle>* conns, Response* resp) = 0;
 
-    void Register(int32 gid, EventHandlerBase<RequestBase*>* handler);
+    void Register(int32 gid, IEventHandler<RequestBase*>* handler);
     void Unregister(int32 gid);
 
 protected:
-    TrackedObjectPool<Connection> conntions;
+    SparseObjectPool<Connection> conntions;
     SpscRingBuffer<ServerSocketEvent> sock_events;
-    EventHandlerBase<ConnectionHandle>* conn_event_handlers[ServerSocketEvent::MAX_EVENT_TYPES];
+    IEventHandler<ConnectionHandle>* conn_event_handlers[ServerSocketEvent::MAX_EVENT_TYPES];
 
     SpscRingBuffer<RequestBase*> requests;
     RequestAllocatorBase* request_allocator;
-    List<EventHandlerBase<RequestBase*>*> request_handlers;
+    List<IEventHandler<RequestBase*>*> request_handlers;
 
     SpscRingBuffer<ResponseArgs> response_args;
-    ResponseAllocatorBase* response_allocator;
+    IMessageAllocator* response_allocator;
 };
 
 } // namespace Network

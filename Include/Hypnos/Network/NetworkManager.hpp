@@ -1,10 +1,12 @@
-﻿#pragma once
+#pragma once
 
+#include "ClientBase.hpp"
+#include "EndpointBase.hpp"
 #include "IOContext.hpp"
 #include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
-#include "ServerSocketBase.hpp"
-#include <liburing.h>
+#include "ServerBase.hpp"
+#include <Hypnos-Core/Container/List.hpp>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -13,48 +15,34 @@ namespace Network {
 class NetworkManager
 {
 public:
-    inline static NetworkManager& Instance() noexcept
-    {
-        static NetworkManager instance;
-        return instance;
-    }
+    NetworkManager() : running(false), terminal_error_code(0), io_thread(nullptr), io_ctx(nullptr) { }
+    ~NetworkManager() { Release(); }
 
-    inline static void SetConfig(const NetworkConfig& cfg) noexcept
-    {
-        NetworkManager::config = cfg;
-    }
+    NetworkManager(const NetworkManager&) = delete;
+    NetworkManager& operator=(const NetworkManager&) = delete;
 
-private:
-    static NetworkConfig config;
+    NetworkManager(NetworkManager&&) = delete;
+    NetworkManager& operator=(NetworkManager&&) = delete;
 
-    NetworkManager() = default;
-    ~NetworkManager() = default;
-
-    NetworkManager(NetworkManager const&) = delete;
-    NetworkManager& operator=(NetworkManager const&) = delete;
-
-public:
-    void Initialize();
+    Status<void> Configure(const NetworkConfig& cfg);
     void Release();
+    Status<void> Start();
+    void Stop();
+    Status<void> Update();
 
-    inline void Update()
-    {
-        for (auto& sock : sockets)
-        {
-            sock->Dispatch();
-        }
-    }
+    ServerBase* GetServer(uint8 id) const;
+    ClientBase* GetClient(uint8 id) const;
 
 private:
     alignas(CACHE_LINE_SIZE) Atomic<bool> running;
+    Atomic<int32> terminal_error_code;
 
+    NetworkConfig cfg;
     Thread* io_thread;
     IOContext* io_ctx;
+    List<EndpointBase*> endpoints;
 
-    List<SocketBase*> sockets;
-    List<ServerSocketBase*> servers;
-
-    void ProcessIOEvents();
+    void Process(uint32 cpu_id);
     void OnCqeError(int32 err);
 };
 

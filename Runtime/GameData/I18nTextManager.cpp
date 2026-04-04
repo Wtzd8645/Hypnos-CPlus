@@ -4,12 +4,12 @@
 namespace Blanketmen {
 namespace Hypnos {
 
-void I18nTextManager::SetI18nTextDirectoryPath(const char8* i18nTextDirPath)
+void I18nTextManager::SetI18nTextDirectoryPath(const char* i18nTextDirPath)
 {
-    this->i18nTextDirPath = const_cast<char8*>(i18nTextDirPath);
+    this->i18nTextDirPath = const_cast<char*>(i18nTextDirPath);
 }
 
-void I18nTextManager::SwitchLanguage(const char8* langName)
+void I18nTextManager::SwitchLanguage(const char* langName)
 {
     if (currentLanguage == langName)
     {
@@ -25,7 +25,7 @@ void I18nTextManager::SwitchLanguage(const char8* langName)
     string filePath = string(i18nTextDirPath).append("/").append(I18nFilePrefix).append(langName).append(FileExt);
     dataFd = ::open(filePath.c_str(), O_RDONLY, S_IRWXU);
     ::fstat(dataFd, &fdStat);
-    i18nMmapPtr = reinterpret_cast<char8*>(::mmap(0, fdStat.st_size, PROT_READ, MAP_SHARED, dataFd, 0));
+    i18nMmapPtr = reinterpret_cast<byte*>(::mmap(0, fdStat.st_size, PROT_READ, MAP_SHARED, dataFd, 0));
     if (i18nMmapPtr == MAP_FAILED)
     {
         Logging::Info("[I18nTextManager] Create mmap fail: %d", errno);
@@ -34,7 +34,7 @@ void I18nTextManager::SwitchLanguage(const char8* langName)
     }
 
     Logging::Info("[I18nTextManager] Create mmap successfully.");
-    currentLanguage = const_cast<char8*>(langName);
+    currentLanguage = const_cast<char*>(langName);
 }
 
 string I18nTextManager::GetText(uint32 id)
@@ -53,8 +53,8 @@ string I18nTextManager::GetText(uint32 id)
         uint32 key = *reinterpret_cast<uint32*>(i18nMmapPtr + offset);
         if (id == key)
         {
-            char8* textPtr = i18nMmapPtr + *reinterpret_cast<int32*>(i18nMmapPtr + offset + KeySize);
-            return string(textPtr + TextCountSize, *reinterpret_cast<int32*>(textPtr));
+            char* textPtr = reinterpret_cast<char*>(i18nMmapPtr + *reinterpret_cast<int32*>(i18nMmapPtr + offset + KeySize) + TextCountSize);
+            return string(textPtr, *reinterpret_cast<int32*>(i18nMmapPtr + offset + KeySize));
         }
 
         if (id < key)

@@ -1,84 +1,122 @@
 #include "Hypnos/Network/NetworkDefs.hpp"
 #include "Hypnos/Network/TcpServer.hpp"
+#include <cstring>
 #include <liburing.h>
 #include <netinet/in.h>
 #include <sys/eventfd.h>
 #include <sys/poll.h>
+#include <thread>
 #include <unordered_set>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-TcpServer::TcpServer(SocketConfig& cfg, IOContext& ctx) : ServerSocketBase(cfg, ctx) { }
+TcpServer::TcpServer(uint32 id, const ServerConfig& cfg, IOContext& ctx) : ServerBase(id, cfg.max_conns),
+cfg(cfg),
+io_ctx(ctx),
+framing_buffer_pool(MAX_BUFFER_SIZE),
+requests(cfg.max_conns),
+response_args(cfg.max_conns)
+{
+    request_allocator = cfg.request_allocator;
+    response_allocator = cfg.response_allocator;
+}
 
 TcpServer::~TcpServer()
 {
     Stop();
-    delete request_allocator;
+    if (request_allocator != nullptr)
+    {
+        delete request_allocator;
+    }
 }
 
-void TcpServer::Start()
+Status<void> TcpServer::Start()
 {
-    if (sock_fd <= INVALID_FD)
+    if (sock_fd > INVALID_FD)
     {
-        Logging::Error("[TcpSocket] Socket is not initialized or already running.");
-        return;
+        return Status<void>::Error(ErrorCode::InvalidHandle, "[TcpSocket] Socket is already running.");
+    }
+
+    Status<void> status = framing_buffer_pool.Allocate(max_conns);
+    if (status.IsFailed())
+    {
+        return status;
+    }
+
+    status = event_args_pool.Allocate(max_conns / 2);
+    if (status.IsFailed())
+    {
+        return status;
     }
 
     sock_fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (sock_fd < 0)
     {
-        Logging::Error("[TcpSocket] Failed to create socket.");
-        return;
+        return Status<void>::Error(ErrorCode::IOError, "[TcpSocket] Failed to create socket.");
     }
 
     int opt = 0;
     if (setsockopt(sock_fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) < 0)
     {
-        Logging::Error("[TcpSocket] Failed to set socket options.");
-        return;
+        return Status<void>::Error(ErrorCode::IOError, "[TcpSocket] Failed to set socket options.");
     }
 
     //setsockopt(sock_fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size)); // TODO: Make configurable.
     //setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)); // TODO: Make configurable.
-    
-    sockaddr_in6 sock_addr = { AF_INET6, htons(27015), 0, in6addr_any, 0 };
+
+    sockaddr_in6 sock_addr = { AF_INET6, htons(cfg.bind_port), 0, cfg.bind_ip, 0 };
     if (bind(sock_fd, (sockaddr*)&sock_addr, sizeof(sock_addr)) < 0)
     {
-        Logging::Error("[TcpSocket] Failed to bind socket.");
-        return;
+        return Status<void>::Error(ErrorCode::IOError, "[TcpSocket] Failed to bind socket.");
     }
 
     if (listen(sock_fd, 256) < 0) // TODO: Make configurable.
     {
-        Logging::Error("[TcpSocket] Failed to listen on socket.");
-        return;
+        return Status<void>::Error(ErrorCode::IOError, "[TcpSocket] Failed to listen on socket.");
     }
 
     Logging::Info("[TcpSocket] Listening on socket.");
     IOEventArgs* args = event_args_pool.Acquire();
     args->op = SocketOp::Poll;
-    args->sock_ver = version;
-    args->sock_id = id;
+    args->ep_ver = version;
+    args->ep_id = static_cast<uint8>(id);
+    args->gid = cfg.io_buf_gid;
+    args->conn_ver = 0;
+    args->conn = nullptr;
     PollInternal(args);
 
     args = event_args_pool.Acquire();
     args->op = SocketOp::Accept;
-    args->sock_ver = version;
-    args->sock_id = id;
+    args->ep_ver = version;
+    args->ep_id = static_cast<uint8>(id);
+    args->gid = cfg.io_buf_gid;
+    args->conn_ver = 0;
+    args->conn = nullptr;
     AcceptInternal(args);
+    return Status<void>::Success();
 }
 
-void TcpServer::Stop()
+void TcpServer::Broadcast(IMessage* resp)
+{
+    // TODO: Current response queue stores connection-handle list by pointer, so a safe zero-copy broadcast path is not wired yet.
+    Logging::Warning("[TcpSocket] Broadcast is not implemented.");
+    if (response_allocator != nullptr)
+    {
+        response_allocator->Release(resp);
+    }
+}
+
+Status<void> TcpServer::Stop()
 {
     if (sock_fd <= INVALID_FD)
     {
-        Logging::Error("[TcpSocket] Socket is not running.");
-        return;
+        return Status<void>::Error(ErrorCode::InvalidHandle, "[TcpSocket] Socket is not running.");
     }
 
-    Logging::Info("[TcpSocket] Closing all active connections");
+    Logging::Info("[TcpSocket] Closing all active connections. %d", id);
+    // TODO: It need to send poll to close connection and wait for completion.
     for (auto& conn : conntions)
     {
         if (conn.sock_fd > INVALID_FD)
@@ -91,25 +129,29 @@ void TcpServer::Stop()
     shutdown(sock_fd, SHUT_RDWR);
     close(sock_fd);
     sock_fd = INVALID_FD;
+    return Status<void>::Success();
 }
 
 void TcpServer::Dispatch()
 {
-    ServerSocketEvent evt;
-    while (sock_events.Dequeue(evt))
+    ConnectionEvent evt;
+    while (conn_events.Dequeue(evt))
     {
-        conn_event_handlers[static_cast<size_t>(evt.type)]->Handle(evt.conn_handle);
+        conn_event_handlers[static_cast<size_t>(evt.type)](evt);
     }
 
-    RequestBase* req = nullptr;
+    IMessage* req = nullptr;
     while (requests.Dequeue(req)) // PERF: Can batch pop.
     {
-        EventHandlerBase<RequestBase*>*& handler = request_handlers[req->gid];
-        if (handler != nullptr)
+        request_dispatcher->Dispatch(*req);
+        if (message_codec != nullptr)
         {
-            handler->Handle(req);
+            message_codec->Release(req);
         }
-        request_allocator->Release(req);
+        else
+        {
+            request_allocator->Release(req);
+        }
     }
 
     // PERF: Maybe change back to submit and wait.
@@ -126,17 +168,16 @@ void TcpServer::Close(List<ConnectionHandle>* conn_handles)
     {
         std::this_thread::yield();
     }
-    
-    uint64 tail = poll_tail.fetch_add(1, std::memory_order_release);
-    if (tail == poll_head.load(std::memory_order_acquire))
+
+    if (poll_count.fetch_add(1, std::memory_order_release))
     {
-        eventfd_write(io_ctx.efd, 1);
+        eventfd_write(io_ctx.event_fd, 1);
     }
 }
 
-void TcpServer::Send(List<ConnectionHandle>* conn_handles, ResponseBase* resp)
+void TcpServer::Send(List<ConnectionHandle>* conn_handles, IMessage* resp)
 {
-    uint8* buf;
+    byte* buf;
     while (!io_ctx.send_buf_pool.Acquire(buf))
     {
         std::this_thread::yield();
@@ -151,36 +192,41 @@ void TcpServer::Send(List<ConnectionHandle>* conn_handles, ResponseBase* resp)
         std::this_thread::yield();
     }
 
-    uint64 tail = poll_tail.fetch_add(1, std::memory_order_release);
-    if (tail == poll_head.load(std::memory_order_acquire))
+    if (poll_count.fetch_add(1, std::memory_order_release))
     {
-        eventfd_write(io_ctx.efd, 1);
+        eventfd_write(io_ctx.event_fd, 1);
     }
 }
 
-void TcpServer::ProcessIOEvent(IOEventArgs* args, int32 res, uint32 flags)
+void TcpServer::Process(const IOEvent& evt)
 {
-    if (args->conn != nullptr && args->conn->version != args->conn_ver)
+    IOEventArgs* args = evt.args;
+    if (args->ep_ver != version || (args->conn != nullptr && args->conn_ver != args->conn->version))
     {
-        if ((flags & IORING_CQE_F_BUFFER) != 0)
-        {
-            io_ctx.ReturnBuffer(flags >> IORING_CQE_BUFFER_SHIFT);
-        }
-
-        if ((flags & IORING_CQE_F_MORE) == 0)
-        {
-            event_args_pool.Release(args);
-        }
+        ReleaseEventArgs(args, evt.flags);
         return;
     }
 
     switch (args->op)
     {
-        case SocketOp::Poll: { OnPoll(args, res, flags); break; }
-        case SocketOp::Accept: { OnAccept(args, res, flags); break; }
-        case SocketOp::Receive: { OnReceive(args, res, flags); break; }
-        case SocketOp::Send: { OnSend(args, res, flags); break; }
+        case SocketOp::Accept: { OnAccept(evt); break; }
+        case SocketOp::Receive: { OnReceive(evt); break; }
+        case SocketOp::Poll: { OnPoll(evt); break; }
+        case SocketOp::Send: { OnSend(evt); break; }
         default: { Logging::Error("[TcpSocket] Unknown operation type."); break; }
+    }
+}
+
+void TcpServer::ReleaseEventArgs(IOEventArgs* args, uint32 flags)
+{
+    if ((flags & IORING_CQE_F_BUFFER) != 0)
+    {
+        io_ctx.ReleaseBuffer(args->gid, flags >> IORING_CQE_BUFFER_SHIFT);
+    }
+
+    if ((flags & IORING_CQE_F_MORE) == 0)
+    {
+        event_args_pool.Release(args);
     }
 }
 
@@ -196,18 +242,13 @@ void TcpServer::CloseInternal(Connection* conn)
     conn->sock_fd = INVALID_FD;
     conn->version++;
 
-    RecvContext& recv_ctx = conn->recv_ctx;
-    recv_ctx.packet_bytes = 0;
-    recv_ctx.waiting_bytes = sizeof(packet_size);
-    recv_ctx.received_bytes = 0;
-
     SendContext& send_ctx = conn->send_ctx;
     send_ctx.pending_bytes = 0;
     send_ctx.processed_bytes = 0;
-    uint8* buf = send_ctx.buffer;
+    byte* buf = send_ctx.buffer;
     while (buf != nullptr)
     {
-        auto& send_meta = BufferMetadata::Get(buf, BUF_META_OFFSET).send;
+        auto& send_meta = BufferMetadata::Get(buf, IOContext::BUF_META_OFFSET).send;
         if (--send_meta.conn_count == 0)
         {
             while (!io_ctx.send_buf_pool.Release(buf)) { }
@@ -224,15 +265,15 @@ void TcpServer::CloseInternal(Connection* conn)
         }
     }
 
-    conntions.Release(conn);
-    sock_events.Enqueue({ ServerSocketEvent::Type::Disconnect, ConnectionHandle(conn) });
-}
+    RecvContext& recv_ctx = conn->recv_ctx;
+    if (recv_ctx.buffer != nullptr)
+    {
+        framing_buffer_pool.Release(recv_ctx.buffer);
+        recv_ctx.buffer = nullptr;
+    }
 
-inline void TcpServer::PollInternal(IOEventArgs* args)
-{
-    io_uring_sqe* sqe = io_uring_get_sqe(&io_ctx.ring);
-    io_uring_sqe_set_data(sqe, args);
-    io_uring_prep_poll_multishot(sqe, io_ctx.efd, POLLIN);
+    conntions.Release(conn);
+    conn_events.Enqueue({ ConnectionEvent::Type::Disconnected, ConnectionHandle(conn) });
 }
 
 inline void TcpServer::AcceptInternal(IOEventArgs* args)
@@ -250,8 +291,15 @@ inline void TcpServer::ReceiveInternal(IOEventArgs* args)
     io_uring_sqe* sqe = io_uring_get_sqe(&io_ctx.ring);
     io_uring_sqe_set_data(sqe, args);
     io_uring_sqe_set_flags(sqe, IOSQE_BUFFER_SELECT);
-    sqe->buf_group = IO_RECV_BUF_GROUP;
+    sqe->buf_group = args->gid;
     io_uring_prep_recv_multishot(sqe, args->conn->sock_fd, nullptr, 0, 0);
+}
+
+inline void TcpServer::PollInternal(IOEventArgs* args)
+{
+    io_uring_sqe* sqe = io_uring_get_sqe(&io_ctx.ring);
+    io_uring_sqe_set_data(sqe, args);
+    io_uring_prep_poll_multishot(sqe, io_ctx.event_fd, POLLIN);
 }
 
 inline void TcpServer::SendInternal(IOEventArgs* args, const void* buf, int32 len)
@@ -260,14 +308,198 @@ inline void TcpServer::SendInternal(IOEventArgs* args, const void* buf, int32 le
     io_uring_sqe* sqe = io_uring_get_sqe(&io_ctx.ring);
     io_uring_sqe_set_data(sqe, args);
     io_uring_prep_send(sqe, args->conn->sock_fd, buf, len, 0);
+    // io_uring_prep_send_zc(sqe, args->conn->sock_fd, packet_buf, packet_len, 0, 0);
 }
 
-void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
+bool TcpServer::HandlePacket(const TransportHeader& header, byte* src)
 {
-    uint64 tail = poll_tail.load(std::memory_order_acquire);
+    packet_size decoded_len = 0;
+    const byte* decoded_buf = packet_codec->Decode(header.codec, src, header.length, decoded_len);
+    if (decoded_buf == nullptr)
+    {
+        return false;
+    }
+
+    IMessage* request = message_codec->Decode(decoded_buf, decoded_len);
+    if (request == nullptr)
+    {
+        return false;
+    }
+
+    while (!requests.Enqueue(request))
+    {
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+void TcpServer::OnAccept(const IOEvent& evt)
+{
+    static const std::unordered_set<int> fatal_errors =
+    {
+        EPERM, EBADF, EFAULT, EINVAL, ENOTSOCK, EOPNOTSUPP,
+        EAFNOSUPPORT, EADDRINUSE, EADDRNOTAVAIL,
+        ENETDOWN, ESHUTDOWN
+    };
+
+    if (evt.res >= 0)
+    {
+        Connection* conn = conntions.Acquire();
+        conn->sock_fd = evt.res;
+        conn->recv_ctx.buffer = framing_buffer_pool.Acquire(); // TODO: Handle buffer acquire failure.
+        conn_events.Enqueue({ ConnectionEvent::Type::Connected, ConnectionHandle(conn) });
+
+        IOEventArgs* args = event_args_pool.Acquire();
+        args->op = SocketOp::Receive;
+        args->ep_ver = version;
+        args->ep_id = id;
+        args->gid = cfg.io_buf_gid;
+        args->conn_ver = conn->version;
+        args->conn = conn;
+        ReceiveInternal(args);
+    }
+
+    if ((evt.flags & IORING_CQE_F_MORE) == 0)
+    {
+        if (evt.res >= 0)
+        {
+            AcceptInternal(evt.args);
+            return;
+        }
+
+        if (fatal_errors.contains(-evt.res))
+        {
+            Logging::Error("[TcpSocket] Failed to accept connection. Error: %s", strerror(-evt.res));
+            event_args_pool.Release(evt.args);
+            return;
+        }
+
+        Logging::Warning("[TcpSocket] Failed to accept connection. Error: %s", strerror(-evt.res));
+        std::this_thread::yield();
+        AcceptInternal(evt.args);
+    }
+}
+
+// TODO: Change to use IOU_PBUF_RING_INC and check for IORING_CQE_F_BUF_MORE flag.
+void TcpServer::OnReceive(const IOEvent& evt)
+{
+    // Check for connection closure or errors
+    if (evt.res <= 0)
+    {
+        Logging::Info("[TcpSocket] Connection closed. Socket: %d, Error: %s", evt.args->conn->sock_fd, strerror(-evt.res));
+        CloseInternal(evt.args->conn);
+        ReleaseEventArgs(evt.args, evt.flags);
+        return;
+    }
+
+    // Check if a buffer was successfully selected
+    if ((evt.flags & IORING_CQE_F_BUFFER) == 0)
+    {
+        Logging::Error("[TcpSocket] No buffer selected for received data.");
+        CloseInternal(evt.args->conn);
+        ReleaseEventArgs(evt.args, evt.flags);
+        return;
+    }
+
+    // Get the receive buffer
+    Logging::Info("[TcpSocket] Received %d bytes.", evt.res);
+    uint16 gid = evt.args->gid;
+    uint16 bid = evt.flags >> IORING_CQE_BUFFER_SHIFT;
+    byte* buf = io_ctx.AcquireBuffer(gid, bid);
+    if (buf == nullptr)
+    {
+        Logging::Error("[TcpSocket] Invalid receive buffer group or buffer id.");
+        CloseInternal(evt.args->conn);
+        ReleaseEventArgs(evt.args, evt.flags);
+        return;
+    }
+
+    RecvContext& ctx = evt.args->conn->recv_ctx;
+    packet_size pending_bytes = evt.res;
+    packet_size offset = 0;
+    while (pending_bytes > 0)
+    {
+        packet_size needed_bytes;
+        if (ctx.header.length == 0)
+        {
+            if (pending_bytes + ctx.received_bytes < TRANSPORT_HEADER_SIZE)
+            {
+                std::memcpy(ctx.buffer + ctx.received_bytes, buf + offset, pending_bytes);
+                ctx.received_bytes += pending_bytes;
+                break;
+            }
+
+            if (ctx.received_bytes == 0)
+            {
+                needed_bytes = TRANSPORT_HEADER_SIZE;
+                std::memcpy(&ctx.header, buf + offset, TRANSPORT_HEADER_SIZE);
+            }
+            else
+            {
+                needed_bytes = TRANSPORT_HEADER_SIZE - ctx.received_bytes;
+                std::memcpy(ctx.buffer + ctx.received_bytes, buf + offset, needed_bytes);
+                ctx.received_bytes = 0;
+                std::memcpy(&ctx.header, ctx.buffer, TRANSPORT_HEADER_SIZE);
+            }
+
+            pending_bytes -= needed_bytes;
+            offset += needed_bytes;
+
+            if (ctx.header.length > MAX_PACKET_SIZE)
+            {
+                CloseInternal(evt.args->conn);
+                ReleaseEventArgs(evt.args, evt.flags);
+                return;
+            }
+        }
+
+        if (pending_bytes + ctx.received_bytes < ctx.header.length)
+        {
+            std::memcpy(ctx.buffer + ctx.received_bytes, buf + offset, pending_bytes);
+            ctx.received_bytes += pending_bytes;
+            break;
+        }
+
+        byte* packet_buf;
+        if (ctx.received_bytes == 0)
+        {
+            needed_bytes = ctx.header.length;
+            packet_buf = buf + offset;
+        }
+        else
+        {
+            needed_bytes = ctx.header.length - ctx.received_bytes;
+            std::memcpy(ctx.buffer + ctx.received_bytes, buf + offset, needed_bytes);
+            ctx.received_bytes = 0;
+            packet_buf = ctx.buffer;
+        }
+
+        if (!HandlePacket(ctx.header, packet_buf))
+        {
+            CloseInternal(evt.args->conn);
+            ReleaseEventArgs(evt.args, evt.flags);
+            return;
+        }
+
+        ctx.header = { };
+        pending_bytes -= needed_bytes;
+        offset += needed_bytes;
+    }
+
+    io_ctx.ReleaseBuffer(gid, bid);
+    if ((evt.flags & IORING_CQE_F_MORE) == 0)
+    {
+        ReceiveInternal(evt.args);
+    }
+}
+
+void TcpServer::OnPoll(const IOEvent& evt)
+{
+    uint64 count = 0;
     ResponseArgs resp_args;
     while (response_args.Dequeue(resp_args)) // TODO: Can batch pop.
     {
+        count++;
         if (resp_args.buffer == nullptr)
         {
             for (ConnectionHandle& conn_handle : *(resp_args.conn_handles))
@@ -277,7 +509,7 @@ void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
         }
         else
         {
-            auto& send_meta = BufferMetadata::Get(resp_args.buffer, BUF_META_OFFSET).send;
+            auto& send_meta = BufferMetadata::Get(resp_args.buffer, IOContext::BUF_META_OFFSET).send;
             send_meta.conn_count = resp_args.conn_handles->size();
             send_meta.size = resp_args.length;
             for (ConnectionHandle& conn_handle : *(resp_args.conn_handles))
@@ -300,13 +532,14 @@ void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
                     ctx.pending_bytes = send_meta.size;
                     ctx.processed_bytes = 0;
 
-                    IOEventArgs* send_args = event_args_pool.Acquire();
-                    send_args->op = SocketOp::Send;
-                    send_args->sock_ver = version;
-                    send_args->sock_id = id;
-                    send_args->conn_ver = conn_handle.conn->version;
-                    send_args->conn = conn_handle;
-                    SendInternal(send_args, ctx.buffer, send_meta.size);
+                    IOEventArgs* args = event_args_pool.Acquire();
+                    args->op = SocketOp::Send;
+                    args->ep_ver = version;
+                    args->ep_id = static_cast<uint8>(id);
+                    args->gid = cfg.io_buf_gid;
+                    args->conn_ver = conn_handle.conn->version;
+                    args->conn = conn_handle;
+                    SendInternal(args, ctx.buffer, send_meta.size);
                 }
             }
 
@@ -317,223 +550,53 @@ void TcpServer::OnPoll(IOEventArgs* args, int32 res, uint32 flags)
         }
     }
 
-    poll_head.store(tail, std::memory_order_release);
-    if (tail != poll_tail.load(std::memory_order_acquire))
+    if (poll_count.fetch_sub(count, std::memory_order_release) > count)
     {
-        OnPoll(args, res, flags);
+        OnPoll(evt);
         return;
     }
 
-    if ((flags & IORING_CQE_F_MORE) == 0)
+    if ((evt.flags & IORING_CQE_F_MORE) == 0)
     {
-        if (res < 0)
+        if (evt.res < 0)
         {
-            Logging::Error("[TcpSocket] Failed to poll. Error: %s", strerror(-res));
-            event_args_pool.Release(args);
+            Logging::Error("[TcpSocket] Failed to poll. Error: %s", strerror(-evt.res));
+            event_args_pool.Release(evt.args);
         }
         else
         {
-            PollInternal(args);
+            PollInternal(evt.args);
         }
     }
 }
 
-void TcpServer::OnAccept(IOEventArgs* args, int32 res, uint32 flags)
+void TcpServer::OnSend(const IOEvent& evt)
 {
-    static const std::unordered_set<int> fatal_errors =
+    if (evt.res < 0)
     {
-        EPERM, EBADF, EFAULT, EINVAL, ENOTSOCK, EOPNOTSUPP,
-        EAFNOSUPPORT, EADDRINUSE, EADDRNOTAVAIL,
-        ENETDOWN, ESHUTDOWN
-    };
-
-    if (res >= 0)
-    {
-        Connection* conn = conntions.Acquire();
-        conn->sock_fd = res;
-        sock_events.Enqueue({ ServerSocketEvent::Type::Connect, ConnectionHandle(conn) });
-
-        IOEventArgs* args = event_args_pool.Acquire();
-        args->op = SocketOp::Receive;
-        args->sock_ver = version;
-        args->sock_id = id;
-        args->conn_ver = conn->version;
-        args->conn = conn;
-        ReceiveInternal(args);
-    }
-
-    if ((flags & IORING_CQE_F_MORE) == 0)
-    {
-        if (res >= 0)
-        {
-            AcceptInternal(args);
-            return;
-        }
-
-        if (fatal_errors.contains(-res))
-        {
-            Logging::Error("[TcpSocket] Failed to accept connection. Error: %s", strerror(-res));
-            event_args_pool.Release(args);
-            return;
-        }
-
-        Logging::Warning("[TcpSocket] Failed to accept connection. Error: %s", strerror(-res));
-        std::this_thread::yield();
-        AcceptInternal(args);
-    }
-}
-
-void TcpServer::OnReceive(IOEventArgs* args, int32 res, uint32 flags)
-{
-    if (res <= 0)
-    {
-        Logging::Info("[TcpSocket] Connection closed. Socket: %d, Error: %s", args->conn->sock_fd, strerror(-res));
-        CloseInternal(args->conn);
-
-        if ((flags & IORING_CQE_F_BUFFER) != 0)
-        {
-            io_ctx.ReturnBuffer(flags >> IORING_CQE_BUFFER_SHIFT);
-        }
-
-        if ((flags & IORING_CQE_F_MORE) == 0)
-        {
-            event_args_pool.Release(args);
-        }
-    }
-    else
-    {
-        if ((flags & IORING_CQE_F_BUFFER) != 0)
-        {
-            int32 bid = flags >> IORING_CQE_BUFFER_SHIFT;
-            uint8* buf = io_ctx.recv_buf_pool[bid];
-
-            Logging::Info("[TcpSocket] Received %d bytes.", res);
-            packet_size received_bytes = res;
-            packet_size processed_bytes = 0;
-            RecvContext& ctx = args->conn->recv_ctx;
-            if (ctx.received_bytes > 0)
-            {
-                if (ctx.waiting_bytes > received_bytes)
-                {
-                    std::memcpy(ctx.buffer + ctx.received_bytes, buf, received_bytes);
-                    ctx.waiting_bytes -= received_bytes;
-                    ctx.received_bytes += received_bytes;
-
-                    io_ctx.ReturnBuffer(bid);
-                    return;
-                }
-
-                received_bytes -= ctx.waiting_bytes;
-                processed_bytes = ctx.waiting_bytes;
-                std::memcpy(ctx.buffer + ctx.received_bytes, buf, ctx.waiting_bytes);
-                ctx.received_bytes = 0;
-
-                if (ctx.packet_bytes == 0)
-                {
-                    std::memcpy(&ctx.packet_bytes, ctx.buffer, sizeof(packet_size));
-                    if (ctx.packet_bytes <= 0 || ctx.packet_bytes > MAX_PACKET_SIZE)
-                    {
-                        received_bytes = -1;
-                        CloseInternal(args->conn);
-                    }
-                    else
-                    {
-                        ctx.waiting_bytes = ctx.packet_bytes;
-                    }
-                }
-                else
-                {
-                    RequestBase* req = request_allocator->Acquire(ctx.buffer);
-                    req->conn_handle = ConnectionHandle(args->conn);
-                    while (!requests.Enqueue(req))
-                    {
-                        std::this_thread::yield();
-                    }
-
-                    ctx.packet_bytes = 0;
-                    ctx.waiting_bytes = sizeof(packet_size);
-                }
-            }
-
-            while (ctx.waiting_bytes <= received_bytes)
-            {
-                if (ctx.packet_bytes == 0)
-                {
-                    std::memcpy(&ctx.packet_bytes, buf + processed_bytes, sizeof(packet_size));
-                    if (ctx.packet_bytes <= 0 || ctx.packet_bytes > MAX_PACKET_SIZE)
-                    {
-                        received_bytes = -1;
-                        CloseInternal(args->conn);
-                        break;
-                    }
-
-                    ctx.waiting_bytes = ctx.packet_bytes;
-                    received_bytes -= sizeof(packet_size);
-                    processed_bytes += sizeof(packet_size);
-                }
-                else
-                {
-                    RequestBase* req = request_allocator->Acquire(buf + processed_bytes);
-                    req->conn_handle = ConnectionHandle(args->conn);
-                    while (!requests.Enqueue(req))
-                    {
-                        std::this_thread::yield();
-                    }
-
-                    received_bytes -= ctx.waiting_bytes;
-                    processed_bytes += ctx.waiting_bytes;
-                    ctx.packet_bytes = 0;
-                    ctx.waiting_bytes = sizeof(packet_size);
-                }
-            }
-
-            if (received_bytes > 0)
-            {
-                ctx.received_bytes = received_bytes;
-                std::memcpy(ctx.buffer, buf + processed_bytes, received_bytes);
-            }
-
-            io_ctx.ReturnBuffer(bid);
-        }
-
-        if ((flags & IORING_CQE_F_MORE) == 0)
-        {
-            ReceiveInternal(args);
-        }
-    }
-}
-
-void TcpServer::OnSend(IOEventArgs* args, int32 res, uint32 flags)
-{
-    if (res < 0)
-    {
-        Logging::Info("[TcpSocket] Connection closed while sending. Op: %d, Error: %s)", args->conn->sock_fd, strerror(-res));
-        CloseInternal(args->conn); // PERF: Check if error is fatal.
-
-        if ((flags & IORING_CQE_F_MORE) == 0)
-        {
-            event_args_pool.Release(args);
-        }
+        Logging::Info("[TcpSocket] Connection closed while sending. Op: %d, Error: %s)", evt.args->conn->sock_fd, strerror(-evt.res));
+        CloseInternal(evt.args->conn); // PERF: Check if error is fatal.
+        ReleaseEventArgs(evt.args, evt.flags);
         return;
     }
 
-    SendContext& ctx = args->conn->send_ctx;
-    if ((flags & IORING_CQE_F_NOTIF) == 0)
+    SendContext& ctx = evt.args->conn->send_ctx;
+    if ((evt.flags & IORING_CQE_F_NOTIF) == 0)
     {
-        Logging::Info("[TcpSocket] Sent %d bytes.", res);
-        ctx.pending_bytes -= res;
-        ctx.processed_bytes += res;
+        Logging::Info("[TcpSocket] Sent %d bytes.", evt.res);
+        ctx.pending_bytes -= evt.res;
+        ctx.processed_bytes += evt.res;
     }
 
-    if ((flags & IORING_CQE_F_MORE) == 0)
+    if ((evt.flags & IORING_CQE_F_MORE) == 0)
     {
         if (ctx.pending_bytes > 0)
         {
-            SendInternal(args, ctx.buffer + ctx.processed_bytes, ctx.pending_bytes);
+            SendInternal(evt.args, ctx.buffer + ctx.processed_bytes, ctx.pending_bytes);
             return;
         }
 
-        auto& send_meta = BufferMetadata::Get(ctx.buffer, BUF_META_OFFSET).send;
+        auto& send_meta = BufferMetadata::Get(ctx.buffer, IOContext::BUF_META_OFFSET).send;
         if (--send_meta.conn_count <= 0)
         {
             while (!io_ctx.send_buf_pool.Release(ctx.buffer)) { }
@@ -543,15 +606,15 @@ void TcpServer::OnSend(IOEventArgs* args, int32 res, uint32 flags)
         {
             ctx.buffer = nullptr;
             ctx.pending_bytes = 0;
-            event_args_pool.Release(args);
+            event_args_pool.Release(evt.args);
         }
         else
         {
             ctx.buffer = ctx.pending_responses.front();
-            ctx.pending_bytes = BufferMetadata::Get(ctx.buffer, BUF_META_OFFSET).send.size;
+            ctx.pending_bytes = BufferMetadata::Get(ctx.buffer, IOContext::BUF_META_OFFSET).send.size;
             ctx.processed_bytes = 0;
             ctx.pending_responses.pop();
-            SendInternal(args, ctx.buffer, ctx.pending_bytes);
+            SendInternal(evt.args, ctx.buffer, ctx.pending_bytes);
         }
     }
 }

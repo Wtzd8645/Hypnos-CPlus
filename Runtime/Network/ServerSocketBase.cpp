@@ -15,7 +15,7 @@ ServerSocketBase::ServerSocketBase(SocketConfig& cfg, IOContext& ctx) : SocketBa
 {
 }
 
-void ServerSocketBase::Register(int32 gid, EventHandlerBase<RequestBase*>* handler)
+void ServerSocketBase::Register(int32 gid, IEventHandler<RequestBase*>* handler)
 {
     if (gid < 0 || gid >= ServerSocketEvent::MAX_EVENT_TYPES)
     {

@@ -32,8 +32,8 @@ private:
     }
 
 public:
-    void CreateMmap(const char8* dataFilePath);
-    int32 GetKeyTableOffset(const char8* tableName);
+    void CreateMmap(const char* dataFilePath);
+    int32 GetKeyTableOffset(const char* tableName);
     uint8* GetDataPointer(int32 keyTableOffset, int32 key);
     uint8* GetDataPointer(int32 offset);
     string GetString(int32 offset);
