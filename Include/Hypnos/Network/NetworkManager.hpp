@@ -15,7 +15,7 @@ namespace Network {
 class NetworkManager
 {
 public:
-    NetworkManager() : running(false), terminal_error_code(0), io_thread(nullptr), io_ctx(nullptr) { }
+    NetworkManager() : running(false), terminal_error_code(0) { }
     ~NetworkManager() { Release(); }
 
     NetworkManager(const NetworkManager&) = delete;
@@ -38,11 +38,15 @@ private:
     Atomic<int32> terminal_error_code;
 
     NetworkConfig cfg;
-    Thread* io_thread;
-    IOContext* io_ctx;
+    List<uint32> reactor_cpu_ids;
+    List<Thread*> io_threads;
+    List<IOContext*> io_contexts;
     List<EndpointBase*> endpoints;
 
-    void Process(uint32 cpu_id);
+    static void OnWakeCqe(int32 res, uint32 flags, CompletionArgs* args);
+    void Process(uint16 rid, uint32 cpu_id);
+    bool HandleWakeCqe(IOContext& io_ctx, uint16 rid, uint32 flags);
+    void WakeReactors();
     void OnCqeError(int32 err);
 };
 

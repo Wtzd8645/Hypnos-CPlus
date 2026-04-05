@@ -21,9 +21,12 @@ public:
 
     const int32 max_conns = 0;
 
-    virtual void Close(List<ConnectionHandle>* conn_handles) = 0;
-    virtual void Broadcast(IMessage* resp) = 0;
-    virtual void Send(List<ConnectionHandle>* conn_handles, IMessage* resp) = 0;
+    virtual Status<void> Close(const List<ConnectionHandle>& conn_handles) = 0;
+    virtual Status<void> Broadcast(IMessage* resp) = 0;
+    virtual Status<void> Send(const List<ConnectionHandle>& conn_handles, IMessage* resp) = 0;
+
+    Status<void> Close(const ConnectionHandle& conn_handle);
+    Status<void> Send(const ConnectionHandle& conn_handle, IMessage* resp);
 
     void Register(int32 id, Delegate<ConnectionEvent> handler);
     void Unregister(int32 id);
@@ -35,18 +38,13 @@ protected:
         max_conns(max_conns),
         request_dispatcher(nullptr),
         request_allocator(nullptr),
-        response_allocator(nullptr),
-        conntions(max_conns),
-        conn_events(1024)
+        response_allocator(nullptr)
     {
     }
 
     IMessageDispatcher* request_dispatcher;
     IMessageAllocator* request_allocator;
     IMessageAllocator* response_allocator;
-
-    SparseObjectPool<Connection> conntions;
-    SpscRingBuffer<ConnectionEvent> conn_events;
     Delegate<ConnectionEvent> conn_event_handlers[(int)ConnectionEvent::Type::Count];
 };
 

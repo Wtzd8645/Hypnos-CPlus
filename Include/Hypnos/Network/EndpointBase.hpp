@@ -24,8 +24,8 @@ public:
 
     virtual Status<void> Start() = 0;
     virtual Status<void> Stop() = 0;
-    virtual void Process(const IOEvent& evt) = 0;
     virtual void Dispatch() = 0;
+    virtual void OnReactorWake(uint16 rid) { (void)rid; }
 
 protected:
     int32 sock_fd = INVALID_FD;

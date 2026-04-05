@@ -2,9 +2,11 @@
 #include "Hypnos/Network/ServerBase.hpp"
 #include "Hypnos/Network/TcpServer.hpp"
 #include <Hypnos-Core/Base/Cpu/CpuUtils.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <limits>
+#include <sys/eventfd.h>
 #include <unistd.h>
 #include <unordered_set>
 
@@ -12,9 +14,38 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
+namespace {
+
+uint16 ResolveReactorCount(const NetworkConfig& config, uint32 available_cpu_count) noexcept
+{
+    if (!config.io_cpu_ids.empty())
+    {
+        if (config.reactor_count == 0)
+        {
+            return static_cast<uint16>(config.io_cpu_ids.size());
+        }
+
+        return static_cast<uint16>(std::min<size_t>(config.reactor_count, config.io_cpu_ids.size()));
+    }
+
+    if (config.reactor_count != 0)
+    {
+        return static_cast<uint16>(std::min<uint32>(config.reactor_count, available_cpu_count));
+    }
+
+    if (available_cpu_count <= 1)
+    {
+        return 1;
+    }
+
+    return static_cast<uint16>(available_cpu_count - 1);
+}
+
+} // namespace
+
 Status<void> NetworkManager::Configure(const NetworkConfig& config)
 {
-    assert(io_ctx == nullptr && "[NetworkManager] Already configured.");
+    assert(io_contexts.empty() && "[NetworkManager] Already configured.");
 
     if (config.io_uring.sq_entries == 0)
     {
@@ -36,39 +67,74 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
         return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] At least one endpoint (server or client) is required.");
     }
 
+    if (!config.clients.empty())
+    {
+        return Status<void>::Error(ErrorCode::Unsupported, "[NetworkManager] Client configuration is not supported yet.");
+    }
+
     const size_t endpoint_count = config.servers.size() + config.clients.size();
     if (endpoint_count > static_cast<size_t>(std::numeric_limits<uint8>::max()) + 1)
     {
         return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Endpoint count exceeds uint8 id range.");
     }
 
-    if (!config.clients.empty())
+    uint32 cpu_ids[CpuUtils::MaxCpuIdCount];
+    const uint32 available_cpu_count = CpuUtils::GetAvailableCpuIds(cpu_ids);
+    if (available_cpu_count == 0)
     {
-        return Status<void>::Error(ErrorCode::Unsupported, "[NetworkManager] Client configuration is not supported yet.");
+        return Status<void>::Error(ErrorCode::InitializationFailed, "[NetworkManager] Failed to discover available CPU ids.");
     }
 
-    io_ctx = new IOContext(config.io_uring);
-    if (io_ctx->event_fd < 0)
+    const uint16 reactor_count = ResolveReactorCount(config, available_cpu_count);
+    if (reactor_count == 0)
     {
-        Release();
-        return Status<void>::Error(ErrorCode::InitializationFailed, "[NetworkManager] Failed to create eventfd.");
+        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Reactor count must be greater than zero.");
     }
 
-    Status<void> status = io_ctx->Initialize(config.io_uring);
-    if (status.IsFailed())
+    reactor_cpu_ids.clear();
+    if (!config.io_cpu_ids.empty())
     {
-        Release();
-        return status;
+        reactor_cpu_ids.assign(config.io_cpu_ids.begin(), config.io_cpu_ids.begin() + reactor_count);
+    }
+    else
+    {
+        reactor_cpu_ids.assign(cpu_ids, cpu_ids + reactor_count);
     }
 
-    for (const IOBufferConfig& cfg : config.io_buffers)
+    io_contexts.reserve(reactor_count);
+    for (uint16 rid = 0; rid < reactor_count; ++rid)
     {
-        status = io_ctx->CreateBuffer(cfg);
+        IOContext* io_ctx = new IOContext(config.io_uring);
+        if (io_ctx->event_fd < 0)
+        {
+            delete io_ctx;
+            Release();
+            return Status<void>::Error(ErrorCode::InitializationFailed, "[NetworkManager] Failed to create eventfd.");
+        }
+
+        Status<void> status = io_ctx->Initialize(config.io_uring, rid);
         if (status.IsFailed())
         {
+            delete io_ctx;
             Release();
             return status;
         }
+
+        io_ctx->wake_args.complete = &NetworkManager::OnWakeCqe;
+        io_ctx->wake_args.owner = this;
+
+        for (const IOBufferConfig& io_buf_cfg : config.io_buffers)
+        {
+            status = io_ctx->CreateBuffer(io_buf_cfg);
+            if (status.IsFailed())
+            {
+                delete io_ctx;
+                Release();
+                return status;
+            }
+        }
+
+        io_contexts.push_back(io_ctx);
     }
 
     endpoints.assign(endpoint_count, nullptr);
@@ -87,10 +153,13 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
             return Status<void>::Error(ErrorCode::AlreadyExists, "[NetworkManager] Duplicate endpoint id across servers/clients.");
         }
 
-        if (io_ctx->io_buffers[server_cfg.io_buf_gid] == nullptr)
+        for (IOContext* io_ctx : io_contexts)
         {
-            Release();
-            return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server references unknown recv group.");
+            if (io_ctx->io_buffers[server_cfg.io_buf_gid] == nullptr)
+            {
+                Release();
+                return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server references unknown recv group.");
+            }
         }
 
         ServerBase* server = nullptr;
@@ -98,7 +167,7 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
         {
             case TransportProtocol::TCP:
             {
-                server = new TcpServer(server_cfg.id, server_cfg, *io_ctx);
+                server = new TcpServer(server_cfg.id, server_cfg, io_contexts);
                 break;
             }
             default:
@@ -126,8 +195,9 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
 
 Status<void> NetworkManager::Start()
 {
-    assert(io_ctx != nullptr && "[NetworkManager] IO context should have been initialized during configuration.");
-    assert(io_thread == nullptr && "[NetworkManager] IO thread should not be running before start.");
+    assert(!io_contexts.empty() && "[NetworkManager] IO contexts should have been initialized during configuration.");
+    assert(io_threads.empty() && "[NetworkManager] IO threads should not be running before start.");
+
     size_t started_count = 0;
     for (; started_count < endpoints.size(); ++started_count)
     {
@@ -150,47 +220,71 @@ Status<void> NetworkManager::Start()
         }
     }
 
-    uint32 cpu_ids[CpuUtils::MaxCpuIdCount];
-    uint32 cpu_count = CpuUtils::GetAvailableCpuIds(cpu_ids);
-    if (cpu_count == 0)
+    for (IOContext* io_ctx : io_contexts)
     {
-        while (started_count > 0)
+        Status<void> status = io_ctx->SubmitWakePoll();
+        if (status.IsFailed())
         {
-            EndpointBase* started_endpoint = endpoints[--started_count];
-            Status<void> stop_status = started_endpoint->Stop();
-            if (stop_status.IsFailed())
+            while (started_count > 0)
             {
-                Logging::Warning("[NetworkManager] Failed to rollback endpoint %d. %s", started_endpoint->id, stop_status.Message());
+                EndpointBase* started_endpoint = endpoints[--started_count];
+                Status<void> stop_status = started_endpoint->Stop();
+                if (stop_status.IsFailed())
+                {
+                    Logging::Warning("[NetworkManager] Failed to rollback endpoint %d. %s", started_endpoint->id, stop_status.Message());
+                }
             }
+
+            return status;
         }
 
-        return Status<void>::Error(ErrorCode::InitializationFailed, "[NetworkManager] Failed to discover available CPU ids.");
+        if (io_uring_submit(&io_ctx->ring) < 0)
+        {
+            while (started_count > 0)
+            {
+                EndpointBase* started_endpoint = endpoints[--started_count];
+                Status<void> stop_status = started_endpoint->Stop();
+                if (stop_status.IsFailed())
+                {
+                    Logging::Warning("[NetworkManager] Failed to rollback endpoint %d. %s", started_endpoint->id, stop_status.Message());
+                }
+            }
+
+            return Status<void>::Error(ErrorCode::IOError, "[NetworkManager] Failed to submit initial io_uring SQEs.");
+        }
     }
 
-    uint32 cpu_index = cfg.io_cpu_index < cpu_count ? cfg.io_cpu_index : cpu_count - 1;
-    io_thread = new Thread(&NetworkManager::Process, this, cpu_ids[cpu_index]);
+    running.store(true, std::memory_order_release);
+    io_threads.reserve(io_contexts.size());
+    for (uint16 rid = 0; rid < io_contexts.size(); ++rid)
+    {
+        io_threads.push_back(new Thread(&NetworkManager::Process, this, rid, reactor_cpu_ids[rid]));
+    }
+
     return Status<void>::Success();
 }
 
 void NetworkManager::Stop()
 {
     running.store(false, std::memory_order_release);
-    if (io_ctx != nullptr && io_ctx->event_fd >= 0)
-    {
-        eventfd_write(io_ctx->event_fd, 1);
-    }
+    WakeReactors();
 
-    if (io_thread != nullptr)
+    for (Thread* io_thread : io_threads)
     {
-        io_thread->join();
-        delete io_thread;
-        io_thread = nullptr;
+        if (io_thread != nullptr)
+        {
+            io_thread->join();
+            delete io_thread;
+        }
     }
+    io_threads.clear();
 
     for (EndpointBase* endpoint : endpoints)
     {
-        assert(endpoint != nullptr && "[NetworkManager] Endpoint should have been created during configuration.");
-        endpoint->Stop();
+        if (endpoint != nullptr)
+        {
+            endpoint->Stop();
+        }
     }
 }
 
@@ -204,11 +298,12 @@ void NetworkManager::Release()
     }
     endpoints.clear();
 
-    if (io_ctx != nullptr)
+    for (IOContext* io_ctx : io_contexts)
     {
         delete io_ctx;
-        io_ctx = nullptr;
     }
+    io_contexts.clear();
+    reactor_cpu_ids.clear();
 
     cfg = NetworkConfig { };
     terminal_error_code.store(0, std::memory_order_release);
@@ -231,36 +326,99 @@ Status<void> NetworkManager::Update()
     return Status<void>::Success();
 }
 
-void NetworkManager::Process(uint32 cpu_id)
+void NetworkManager::Process(uint16 rid, uint32 cpu_id)
 {
     if (CpuUtils::PinThread(cpu_id).IsFailed())
     {
-        Logging::Warning("[NetworkManager] Failed to pin IO thread to CPU.");
+        Logging::Warning("[NetworkManager] Failed to pin IO thread to CPU %d.", cpu_id);
     }
 
-    io_uring* ring = &io_ctx->ring;
-    int32 res;
-    io_uring_cqe* cqes;
-    uint32 head;
-    io_uring_cqe* cqe;
-    running.store(true, std::memory_order_release);
+    IOContext& io_ctx = *io_contexts[rid];
+    io_uring* ring = &io_ctx.ring;
     while (running.load(std::memory_order_acquire))
     {
-        res = io_uring_wait_cqe(ring, &cqes);
+        io_uring_cqe* cqe = nullptr;
+        const int32 res = io_uring_wait_cqe(ring, &cqe);
         if (res < 0)
         {
             OnCqeError(-res);
             continue;
         }
 
+        uint32 consumed_count = 0;
+        uint32 head = 0;
         io_uring_for_each_cqe(ring, head, cqe)
         {
-            IOEventArgs* args = static_cast<IOEventArgs*>(io_uring_cqe_get_data(cqe));
-            endpoints[args->ep_id]->Process(IOEvent { cqe->res, cqe->flags, args });
+            ++consumed_count;
+            CompletionArgs* args = static_cast<CompletionArgs*>(io_uring_cqe_get_data(cqe));
+            if (args == nullptr || args->complete == nullptr)
+            {
+                OnCqeError(0);
+                break;
+            }
+
+            args->complete(cqe->res, cqe->flags, args);
+            if (!running.load(std::memory_order_acquire))
+            {
+                break;
+            }
         }
 
-        io_ctx->FlushBuffers();
-        io_ctx->AdvanceCqeRing(head);
+        io_ctx.FlushBuffers();
+        io_ctx.AdvanceCqeRing(consumed_count);
+        if (io_uring_sq_ready(ring) > 0)
+        {
+            io_uring_submit(ring);
+        }
+    }
+}
+
+void NetworkManager::OnWakeCqe(int32 res, uint32 flags, CompletionArgs* args)
+{
+    (void)res;
+    assert(args != nullptr && "[NetworkManager] Wake CQE args must not be null.");
+    assert(args->owner != nullptr && "[NetworkManager] Wake CQE owner must be bound.");
+
+    NetworkManager& self = *static_cast<NetworkManager*>(args->owner);
+    IOContext& io_ctx = *self.io_contexts[args->rid];
+    self.HandleWakeCqe(io_ctx, args->rid, flags);
+}
+
+bool NetworkManager::HandleWakeCqe(IOContext& io_ctx, uint16 rid, uint32 flags)
+{
+    io_ctx.ClearWakeEvent();
+    while (io_ctx.ConsumePendingCommands() > 0)
+    {
+        for (EndpointBase* endpoint : endpoints)
+        {
+            endpoint->OnReactorWake(rid);
+        }
+    }
+
+    if ((flags & IORING_CQE_F_MORE) == 0 && running.load(std::memory_order_acquire))
+    {
+        Status<void> status = io_ctx.SubmitWakePoll();
+        if (status.IsFailed())
+        {
+            Logging::Error("[NetworkManager] Failed to resubmit reactor wake poll. %s", status.Message());
+            terminal_error_code.store(static_cast<int32>(ErrorCode::IOError), std::memory_order_release);
+            running.store(false, std::memory_order_release);
+            WakeReactors();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void NetworkManager::WakeReactors()
+{
+    for (IOContext* io_ctx : io_contexts)
+    {
+        if (io_ctx != nullptr && io_ctx->event_fd >= 0)
+        {
+            eventfd_write(io_ctx->event_fd, 1);
+        }
     }
 }
 
@@ -271,14 +429,14 @@ void NetworkManager::OnCqeError(int32 err)
     if (retriable_errors.contains(err))
     {
         Logging::Warning("[NetworkManager] Failed to wait for CQE. Error: %s", strerror(err));
-        usleep(8); // TODO: Make configurable.
+        usleep(8);
+        return;
     }
-    else
-    {
-        Logging::Error("[NetworkManager] Failed to wait for CQE. %s", strerror(err));
-        terminal_error_code.store(static_cast<int32>(ErrorCode::IOError), std::memory_order_release);
-        running.store(false, std::memory_order_release);
-    }
+
+    Logging::Error("[NetworkManager] Failed to wait for CQE. %s", strerror(err));
+    terminal_error_code.store(static_cast<int32>(ErrorCode::IOError), std::memory_order_release);
+    running.store(false, std::memory_order_release);
+    WakeReactors();
 }
 
 ServerBase* NetworkManager::GetServer(uint8 id) const

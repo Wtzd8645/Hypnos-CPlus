@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Connection.hpp"
+#include "IOContext.hpp"
 #include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
 
@@ -37,7 +38,7 @@ public:
     virtual void Stop() = 0;
 
     virtual void Dispatch() = 0;
-    virtual void ProcessIOEvent(IOEventArgs* args, int32 res, uint32 flags) = 0;
+    virtual void ProcessIOEvent(CompletionArgs* args, int32 res, uint32 flags) = 0;
 
 protected:
     uint32 id;

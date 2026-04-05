@@ -10,18 +10,25 @@
 #include <liburing.h>
 #include <limits>
 #include <sys/eventfd.h>
+#include <sys/poll.h>
 #include <unistd.h>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-enum class SocketOp : uint8
+struct CompletionArgs;
+using CompletionFn = void (*)(int32 res, uint32 flags, CompletionArgs* args);
+
+struct CompletionArgs
 {
-    Accept,
-    Receive,
-    Poll,
-    Send
+    CompletionFn complete = nullptr;
+    void* owner = nullptr;
+    uint16 rid = 0;
+    uint8 ep_ver = 0;
+    uint16 gid = 0;
+    uint8 conn_ver = 0;
+    Connection* conn = nullptr;
 };
 
 union BufferMetadata
@@ -43,28 +50,18 @@ union BufferMetadata
     } send;
 };
 
-struct IOEventArgs
+enum class ReactorCommandType : uint8
 {
-    SocketOp op;
-    uint8 ep_ver;
-    uint8 ep_id;
-    uint16 gid;
-    uint8 conn_ver;
-    Connection* conn;
-};
-
-struct IOEvent
-{
-    int32 res;
-    uint32 flags;
-    IOEventArgs* args;
+    Close,
+    Send
 };
 
 struct ResponseArgs
 {
-    List<ConnectionHandle>* conn_handles;
-    byte* buffer;
-    packet_size length;
+    ReactorCommandType type = ReactorCommandType::Send;
+    List<ConnectionHandle> conn_handles;
+    byte* buffer = nullptr;
+    packet_size length = 0;
 };
 
 struct IOContext
@@ -75,10 +72,14 @@ struct IOContext
     io_uring ring { };
     io_uring_params params { };
     bool ring_initialized = false;
+    uint16 rid = 0;
 
     int32 event_fd = -1;
     IOBuffer* io_buffers[IO_BUFFER_GROUP_SIZE] = { };
     SpscBufferPool send_buf_pool;
+    bool has_pending_buffer_flush = false;
+    alignas(CACHE_LINE_SIZE) Atomic<uint32> pending_commands { 0 };
+    CompletionArgs wake_args { };
 
     IOContext(const IOUringConfig& cfg) : send_buf_pool(cfg.send_buffer_size, cfg.send_pool_capacity, cfg.send_pool_mmap_flags)
     {
@@ -107,11 +108,13 @@ struct IOContext
     IOContext(IOContext&&) = delete;
     IOContext& operator=(IOContext&&) = delete;
 
-    inline Status<void> Initialize(const IOUringConfig& cfg)
+    inline Status<void> Initialize(const IOUringConfig& cfg, uint16 rid)
     {
         memset(&params, 0, sizeof(params));
         params.flags = cfg.flags;
         params.sq_thread_idle = cfg.sq_thread_idle;
+        this->rid = rid;
+        wake_args.rid = rid;
 
         if (cfg.cq_entries > cfg.sq_entries)
         {
@@ -126,6 +129,35 @@ struct IOContext
         }
 
         ring_initialized = true;
+        return Status<void>::Success();
+    }
+
+    inline io_uring_sqe* AcquireSqe()
+    {
+        io_uring_sqe* sqe = io_uring_get_sqe(&ring);
+        if (sqe != nullptr)
+        {
+            return sqe;
+        }
+
+        if (io_uring_submit(&ring) < 0)
+        {
+            return nullptr;
+        }
+
+        return io_uring_get_sqe(&ring);
+    }
+
+    inline Status<void> SubmitWakePoll()
+    {
+        io_uring_sqe* sqe = AcquireSqe();
+        if (sqe == nullptr)
+        {
+            return Status<void>::Error(ErrorCode::Busy, "Failed to acquire SQE for reactor wake poll.");
+        }
+
+        io_uring_sqe_set_data(sqe, &wake_args);
+        io_uring_prep_poll_multishot(sqe, event_fd, POLLIN);
         return Status<void>::Success();
     }
 
@@ -180,25 +212,55 @@ struct IOContext
         return (*buf)[bid];
     }
 
-    inline void ReleaseBuffer(uint16 gid, uint32 bid) const
+    inline void ReleaseBuffer(uint16 gid, uint32 bid)
     {
         assert(gid < IO_BUFFER_GROUP_SIZE && "[IOContext] Invalid IO buffer gid.");
         IOBuffer* buf = io_buffers[gid];
         assert(buf != nullptr && "[IOContext] IO buffer is not initialized.");
         buf->Return(bid);
+        has_pending_buffer_flush = true;
     }
 
     inline void FlushBuffers()
     {
+        if (!has_pending_buffer_flush)
+        {
+            return;
+        }
+
         for (IOBuffer* buf : io_buffers)
         {
-            buf->Flush();
+            if (buf != nullptr && buf->HasPending())
+            {
+                buf->Flush();
+            }
+        }
+
+        has_pending_buffer_flush = false;
+    }
+
+    inline void AdvanceCqeRing(uint32 count)
+    {
+        io_uring_cq_advance(&ring, count);
+    }
+
+    inline void Notify() noexcept
+    {
+        if (pending_commands.fetch_add(1, std::memory_order_release) == 0)
+        {
+            eventfd_write(event_fd, 1);
         }
     }
 
-    inline void AdvanceCqeRing(uint32 head)
+    inline void ClearWakeEvent() noexcept
     {
-        io_uring_cq_advance(&ring, head - ring.cq.khead[0]);
+        eventfd_t count = 0;
+        while (eventfd_read(event_fd, &count) == 0) { }
+    }
+
+    inline uint32 ConsumePendingCommands() noexcept
+    {
+        return pending_commands.exchange(0, std::memory_order_acq_rel);
     }
 
 private:

@@ -81,6 +81,11 @@ public:
         }
     }
 
+    inline bool HasPending() const noexcept
+    {
+        return pending_count > 0;
+    }
+
     inline void Destroy(io_uring* io_ring, bool ring_initialized) noexcept
     {
         if (buf_ring != nullptr && io_ring != nullptr && ring_initialized)

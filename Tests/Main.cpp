@@ -25,6 +25,7 @@ int main(int argc, char* argv[])
     {
         case 1:
         {
+            Hypnos::Tests::NetworkPasses();
             break;
         }
     }
