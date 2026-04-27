@@ -10,16 +10,16 @@ struct IPacketCodec
 {
     virtual ~IPacketCodec() = default;
 
-    virtual bool Encode(uint8 id, const byte* src_buf, packet_size src_len, byte* dest_buf, packet_size& dest_len) = 0;
-    virtual const byte* Decode(uint8 id, const byte* src_buf, packet_size src_len, packet_size& dest_len) = 0;
+    virtual bool Encode(uint8 id, const byte* src_buf, PacketSize src_len, byte* dest_buf, PacketSize& dest_len) = 0;
+    virtual const byte* Decode(uint8 id, const byte* src_buf, PacketSize src_len, PacketSize& dest_len) = 0;
 };
 
 struct IMessage
 {
     virtual ~IMessage() = default;
 
-    virtual packet_size Pack(byte* buf) = 0;
-    virtual void Unpack(const byte* buf, packet_size len) = 0;
+    virtual Status<PacketSize> Pack(byte* buf, PacketSize capacity) const = 0;
+    virtual void Unpack(const byte* buf, PacketSize len) = 0;
 };
 
 struct IMessageAllocator
@@ -35,7 +35,7 @@ struct IMessageCodec
 {
     virtual ~IMessageCodec() = default;
 
-    virtual IMessage* Decode(const byte* buf, packet_size len) = 0;
+    virtual IMessage* Decode(const byte* buf, PacketSize len) = 0;
     virtual void Release(IMessage* msg) = 0;
 };
 

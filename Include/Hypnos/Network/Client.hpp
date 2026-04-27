@@ -1,36 +1,23 @@
 #pragma once
 
-#include "EndpointBase.hpp"
 #include "IMessage.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-class ClientBase : public EndpointBase
+class Client
 {
 public:
-    ClientBase(uint8 id) :
-        EndpointBase(id, EndpointBase::Type::Client),
-        response_allocator(nullptr)
+    explicit Client(uint8 id) : id(id), response_allocator(nullptr)
     {
     }
 
-    virtual ~ClientBase() = default;
+    virtual ~Client() = default;
 
-    Status<void> Start() override
-    {
-        return Connect();
-    }
-
-    Status<void> Stop() override
-    {
-        return Disconnect();
-    }
-
+    const uint8 id;
     virtual Status<void> Connect() = 0;
     virtual Status<void> Disconnect() = 0;
-
     virtual void Send(IMessage* resp) = 0;
 
 protected:

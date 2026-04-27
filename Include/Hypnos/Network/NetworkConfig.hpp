@@ -20,10 +20,6 @@ struct IOUringConfig
     uint32 sq_thread_idle = 8000;
 
     int32 event_fd_flags = EFD_NONBLOCK | EFD_CLOEXEC;
-
-    uint32 send_buffer_size = MAX_BUFFER_SIZE;
-    uint32 send_pool_capacity = 8192;
-    int32 send_pool_mmap_flags = MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB;
 };
 
 struct IOBufferConfig
@@ -38,6 +34,7 @@ struct ServerConfig
 {
     uint8 id = 0;
     TransportProtocol protocol;
+    List<uint16> shard_ids;
     in6_addr bind_ip;
     uint16 bind_port;
     int32 listen_backlog = 256;
@@ -45,12 +42,17 @@ struct ServerConfig
     int32 max_conns;
     IMessageAllocator* request_allocator = nullptr;
     IMessageAllocator* response_allocator = nullptr;
+    uint32 send_buffer_size = MAX_BUFFER_SIZE;
+    uint32 send_buffer_pool_capacity = 8192;
+    uint32 max_pending_send_buffers_per_connection = 8;
+    int32 send_buffer_mmap_flags = MAP_LOCKED | MAP_POPULATE | MAP_HUGETLB;
 };
 
 struct ClientConfig
 {
     uint8 id = 0;
     TransportProtocol protocol;
+    List<uint16> shard_ids;
     in6_addr server_ip;
     uint16 server_port;
     uint16 io_buf_gid = 0;
@@ -59,9 +61,9 @@ struct ClientConfig
 
 struct NetworkConfig
 {
-    uint16 reactor_count = 0;
-    uint32 io_cpu_index = 0;
-    List<uint32> io_cpu_ids;
+    uint16 shard_count = 0;
+    uint32 shard_cpu_index = 0;
+    List<uint32> shard_cpu_ids;
     IOUringConfig io_uring;
     List<IOBufferConfig> io_buffers;
     List<ServerConfig> servers;

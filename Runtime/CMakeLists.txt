@@ -4,7 +4,7 @@ if (UNIX)
 endif ()
 
 add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
-    "Network/NetworkManager.cpp" "Network/ServerBase.cpp"
+    "Network/NetworkManager.cpp" "Network/Server.cpp"
     "GameData/GameDataManager.cpp" "GameData/I18nTextManager.cpp"
     "GameState/GameStateManager.cpp"
     "GameTime/GameTimeManager.cpp" "GameTime/CountdownTimer.cpp" "GameTime/LapTimer.cpp")

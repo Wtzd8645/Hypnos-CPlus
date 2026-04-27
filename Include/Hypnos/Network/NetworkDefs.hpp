@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Hypnos-Core/Base/Platform.hpp>
+
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
@@ -19,14 +21,14 @@ constexpr int32 SOCKET_ERROR = -1;
 constexpr uint16 DEFAULT_PORT = 27015;
 constexpr uint8 PACKET_CODEC_NONE = 0;
 
-typedef uint16 packet_size;
+using PacketSize = uint16;
 
 enum class TransportProtocol : uint8
 {
     Mock = 0,
-    TCP = 1,
-    UDP = 2,
-    KCP = 3
+    Tcp = 1,
+    Udp = 2,
+    Kcp = 3
 };
 
 struct TransportHeader
@@ -44,7 +46,7 @@ struct ProtocolHeader
     uint64 token;
 };
 
-constexpr packet_size TRANSPORT_HEADER_SIZE = sizeof(TransportHeader);
+constexpr PacketSize TRANSPORT_HEADER_SIZE = sizeof(TransportHeader);
 
 } // namespace Network
 } // namespace Hypnos
