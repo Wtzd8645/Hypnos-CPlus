@@ -2,7 +2,6 @@
 
 #include "Hypnos/Network/ConnectionHandle.hpp"
 #include "Hypnos/Network/NetworkDefs.hpp"
-#include <limits>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -13,13 +12,6 @@ struct RecvContext
     PacketSize received_bytes = 0;
     TransportHeader header = { };
     byte* buffer = nullptr;
-};
-
-enum class ConnectionState : uint8
-{
-    Vacant,
-    Connected,
-    Closing
 };
 
 struct PendingBufferRing
@@ -87,23 +79,22 @@ struct SendContext
 
 struct Connection
 {
-    ConnectionHandle CreateHandle() const noexcept
+    enum class State : uint8
     {
-        return ConnectionHandle(endpoint_id,
-                                shard_id,
-                                slot,
-                                generation.load(std::memory_order_acquire));
-    }
+        Vacant,
+        Connected,
+        Closing,
+        Count
+    };
 
-    uint16 endpoint_id = std::numeric_limits<uint16>::max();
-    uint16 shard_id = 0;
-    uint16 slot = 0;
-
-    Atomic<ConnectionState> state { ConnectionState::Vacant };
     Atomic<uint32> generation { 1 };
     Atomic<uint32> queued_send_count { 0 };
 
     int32 sock_fd = INVALID_FD;
+    uint16 slot = 0;
+    Atomic<State> state { State::Vacant };
+
+    void* endpoint_context = nullptr;
     RecvContext recv_ctx;
     SendContext send_ctx;
 };

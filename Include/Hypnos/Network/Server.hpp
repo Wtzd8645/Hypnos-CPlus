@@ -4,11 +4,12 @@
 #include "IMessage.hpp"
 #include "NetworkDefs.hpp"
 #include <Hypnos-Core/Mediation/Delegate.hpp>
-#include <span>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
+
+struct Connection;
 
 class Server
 {
@@ -18,14 +19,13 @@ public:
     const uint8 id;
     const int32 max_conns = 0;
 
-    Status<void> Close(ConnectionHandle conn_handle);
-    virtual Status<void> Close(std::span<const ConnectionHandle> conn_handles) = 0;
-    virtual Status<void> Broadcast(const IMessage& message) = 0;
-    virtual Status<void> Send(std::span<const ConnectionHandle> conn_handles, const IMessage& message) = 0;
+    virtual Status<void> Close(ConnectionHandle conn_handle) = 0;
+    Status<void> Encode(const IMessage& message, EncodedMessage& encoded) const;
     Status<void> Send(ConnectionHandle conn_handle, const IMessage& message);
+    virtual Status<void> Send(ConnectionHandle conn_handle, const EncodedMessage& encoded) = 0;
 
-    void Register(ConnectionEventType type, Delegate<ConnectionEvent> handler);
-    void Unregister(ConnectionEventType type);
+    void Register(ConnectionEvent::Type type, Delegate<ConnectionEvent> handler);
+    void Unregister(ConnectionEvent::Type type);
 
 protected:
     Server(int32 id, int32 max_conns) :
@@ -36,9 +36,12 @@ protected:
     {
     }
 
+    static ConnectionHandle CreateHandle(Connection& conn) noexcept;
+    static Connection* ResolveHandle(ConnectionHandle conn_handle) noexcept;
+
     IMessageDispatcher* request_dispatcher;
     IMessageAllocator* request_allocator;
-    Delegate<ConnectionEvent> conn_event_handlers[CONNECTION_EVENT_TYPE_COUNT];
+    Delegate<ConnectionEvent> conn_event_handlers[static_cast<size_t>(ConnectionEvent::Type::Count)];
 };
 
 } // namespace Network

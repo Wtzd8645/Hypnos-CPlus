@@ -1,6 +1,6 @@
 #include "Hypnos/Network/NetworkManager.hpp"
 #include "Hypnos/Network/Server.hpp"
-#include "EndpointRuntime.hpp"
+#include "Endpoint.hpp"
 #include "NetworkShard.hpp"
 #include "TcpServer.hpp"
 #include <Hypnos-Core/Base/Cpu/CpuUtils.hpp>
@@ -66,6 +66,7 @@ uint16 ResolveShardCount(const NetworkConfig& config, uint32 available_cpu_count
 Status<void> NetworkManager::Configure(const NetworkConfig& config)
 {
     assert(shards.empty() && "[NetworkManager] Already configured.");
+    HYP_NETWORK_MANAGER_BIND_OWNER_THREAD(*this);
 
     if (config.io_uring.sq_entries == 0)
     {
@@ -88,7 +89,7 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
     }
 
     const size_t endpoint_count = config.servers.size() + config.clients.size();
-    if (endpoint_count > static_cast<size_t>(std::numeric_limits<uint8>::max()) + 1)
+    if (endpoint_count > static_cast<size_t>(std::numeric_limits<uint8>::max()))
     {
         return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Endpoint count exceeds uint8 id range.");
     }
@@ -104,6 +105,11 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
     if (shard_count == 0)
     {
         return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Shard count must be greater than zero.");
+    }
+
+    if (shard_count > std::numeric_limits<uint8>::max())
+    {
+        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Shard count exceeds uint8 id range.");
     }
 
     shard_cpu_ids.clear();
@@ -198,10 +204,9 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
         }
 
         shard->cpu_id = shard_cpu_ids[shard_id];
+        shard->owner = this;
         shard->wake_poll_args.complete = &NetworkManager::OnWakeCqe;
-        shard->wake_poll_args.owner = this;
-        shard->wake_poll_args.type = CompletionArgs::Type::Wake;
-        shard->wake_poll_args.data.wake.shard_id = shard_id;
+        shard->wake_poll_args.user_data = shard;
 
         for (const IOBufferConfig& io_buf_cfg : config.io_buffers)
         {
@@ -254,7 +259,7 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
             }
         }
 
-        EndpointRuntime* endpoint = nullptr;
+        Endpoint* endpoint = nullptr;
         switch (server_cfg.protocol)
         {
             case TransportProtocol::Tcp:
@@ -277,6 +282,9 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
         }
 
         endpoints[endpoint_id] = endpoint;
+#if defined(DEBUG)
+        endpoint->BindOwnerThread();
+#endif
         for (uint16 shard_id : server_cfg.shard_ids)
         {
             shard_endpoints[shard_id].push_back(endpoint);
@@ -298,14 +306,14 @@ Status<void> NetworkManager::Configure(const NetworkConfig& config)
 
 Status<void> NetworkManager::Start()
 {
-    assert(ClaimOwnerThread() && "[NetworkManager] Start must be called from the owner thread.");
+    HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(*this, "[NetworkManager] Start must be called from the owner thread.");
     assert(!shards.empty() && "[NetworkManager] Shards should have been initialized during configuration.");
 
     auto rollback_started_endpoints = [this](size_t started_count)
     {
         while (started_count > 0)
         {
-            EndpointRuntime* started_endpoint = endpoints[--started_count];
+            Endpoint* started_endpoint = endpoints[--started_count];
             Status<void> stop_status = started_endpoint->Stop();
             if (stop_status.IsFailed())
             {
@@ -326,7 +334,7 @@ Status<void> NetworkManager::Start()
     size_t started_count = 0;
     for (; started_count < endpoints.size(); ++started_count)
     {
-        EndpointRuntime* endpoint = endpoints[started_count];
+        Endpoint* endpoint = endpoints[started_count];
         assert(endpoint != nullptr && "[NetworkManager] Endpoint should have been created during configuration.");
         Status<void> status = endpoint->Start();
         if (status.IsFailed())
@@ -417,9 +425,9 @@ bool NetworkManager::HandleWakeCqe(NetworkShard& shard, uint32 flags)
     shard.ClearWakeEvent();
     while (shard.ConsumePendingCommands() > 0)
     {
-        for (EndpointRuntime* endpoint : shard_endpoints[shard.id])
+        for (Endpoint* endpoint : shard_endpoints[shard.id])
         {
-            endpoint->OnShardWake(shard.id);
+            endpoint->HandleShardWake(shard.id);
         }
     }
 
@@ -450,7 +458,12 @@ bool NetworkManager::HandleWakeCqe(NetworkShard& shard, uint32 flags)
 
 void NetworkManager::Stop()
 {
-    assert(ClaimOwnerThread() && "[NetworkManager] Stop must be called from the owner thread.");
+    if (shards.empty() && endpoints.empty())
+    {
+        return;
+    }
+
+    HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(*this, "[NetworkManager] Stop must be called from the owner thread.");
 
     running.store(false, std::memory_order_release);
     for (NetworkShard* shard : shards)
@@ -471,7 +484,7 @@ void NetworkManager::Stop()
         shard->state.store(NetworkShard::State::Stopped, std::memory_order_release);
     }
 
-    for (EndpointRuntime* endpoint : endpoints)
+    for (Endpoint* endpoint : endpoints)
     {
         if (endpoint != nullptr)
         {
@@ -484,7 +497,7 @@ void NetworkManager::Release()
 {
     Stop();
 
-    for (EndpointRuntime* endpoint : endpoints)
+    for (Endpoint* endpoint : endpoints)
     {
         delete endpoint;
     }
@@ -499,13 +512,15 @@ void NetworkManager::Release()
     shard_cpu_ids.clear();
 
     cfg = NetworkConfig { };
+#if defined(DEBUG)
     owner_thread_id = std::thread::id();
+#endif
     terminal_error_code.store(0, std::memory_order_release);
 }
 
 Status<void> NetworkManager::Update()
 {
-    assert(ClaimOwnerThread() && "[NetworkManager] Update must be called from the owner thread.");
+    HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(*this, "[NetworkManager] Update must be called from the owner thread.");
 
     const int32 error_code = terminal_error_code.load(std::memory_order_acquire);
     if (error_code != 0)
@@ -518,7 +533,7 @@ Status<void> NetworkManager::Update()
         shard->DrainReturnedSendBuffers();
     }
 
-    for (EndpointRuntime* endpoint : endpoints)
+    for (Endpoint* endpoint : endpoints)
     {
         assert(endpoint != nullptr && "[NetworkManager] Endpoint should have been created during configuration.");
         endpoint->Dispatch();
@@ -531,11 +546,12 @@ void NetworkManager::OnWakeCqe(int32 res, uint32 flags, CompletionArgs* args)
 {
     (void)res;
     assert(args != nullptr && "[NetworkManager] Wake CQE args must not be null.");
-    assert(args->owner != nullptr && "[NetworkManager] Wake CQE owner must be bound.");
-    assert(args->type == CompletionArgs::Type::Wake && "[NetworkManager] Unexpected completion args type for wake CQE.");
+    assert(args->user_data != nullptr && "[NetworkManager] Wake CQE shard must be bound.");
 
-    NetworkManager& self = *static_cast<NetworkManager*>(args->owner);
-    NetworkShard& shard = *self.shards[args->data.wake.shard_id];
+    NetworkShard& shard = *static_cast<NetworkShard*>(args->user_data);
+    assert(shard.owner != nullptr && "[NetworkManager] Wake CQE manager owner must be bound.");
+
+    NetworkManager& self = *static_cast<NetworkManager*>(shard.owner);
     self.HandleWakeCqe(shard, flags);
 }
 
@@ -567,17 +583,24 @@ void NetworkManager::OnCqeError(int32 err)
     WakeShards();
 }
 
-bool NetworkManager::ClaimOwnerThread() noexcept
+#if defined(DEBUG)
+void NetworkManager::BindOwnerThread() noexcept
 {
-    const std::thread::id current_thread_id = std::this_thread::get_id();
-    if (owner_thread_id == std::thread::id())
-    {
-        owner_thread_id = current_thread_id;
-        return true;
-    }
-
-    return owner_thread_id == current_thread_id;
+    assert((owner_thread_id == std::thread::id() || owner_thread_id == std::this_thread::get_id()) && "[NetworkManager] Owner thread is already bound to another thread.");
+    owner_thread_id = std::this_thread::get_id();
 }
+
+bool NetworkManager::IsOwnerThread() const noexcept
+{
+    return owner_thread_id == std::this_thread::get_id();
+}
+
+void NetworkManager::AssertOwnerThread(const char* context) const noexcept
+{
+    assert(owner_thread_id != std::thread::id() && context);
+    assert(IsOwnerThread() && context);
+}
+#endif
 
 Server* NetworkManager::GetServer(uint8 id) const
 {
@@ -587,8 +610,8 @@ Server* NetworkManager::GetServer(uint8 id) const
         return nullptr;
     }
 
-    EndpointRuntime* endpoint = endpoints[endpoint_id];
-    if (endpoint == nullptr || endpoint->type != EndpointRuntime::Type::Server)
+    Endpoint* endpoint = endpoints[endpoint_id];
+    if (endpoint == nullptr)
     {
         return nullptr;
     }
@@ -604,8 +627,8 @@ Client* NetworkManager::GetClient(uint8 id) const
         return nullptr;
     }
 
-    EndpointRuntime* endpoint = endpoints[endpoint_id];
-    if (endpoint == nullptr || endpoint->type != EndpointRuntime::Type::Client)
+    Endpoint* endpoint = endpoints[endpoint_id];
+    if (endpoint == nullptr)
     {
         return nullptr;
     }

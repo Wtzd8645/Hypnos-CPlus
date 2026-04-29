@@ -18,8 +18,20 @@ struct IMessage
 {
     virtual ~IMessage() = default;
 
+    virtual uint16 Id() const noexcept = 0;
     virtual Status<PacketSize> Pack(byte* buf, PacketSize capacity) const = 0;
-    virtual void Unpack(const byte* buf, PacketSize len) = 0;
+    virtual Status<void> Unpack(const byte* buf, PacketSize len) = 0;
+};
+
+struct EncodedMessage
+{
+    PacketSize size = 0;
+    byte buffer[MAX_PACKET_SIZE] = { };
+
+    bool IsValid() const noexcept
+    {
+        return size > 0 && size <= MAX_PACKET_SIZE;
+    }
 };
 
 struct IMessageAllocator

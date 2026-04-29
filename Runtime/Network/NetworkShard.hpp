@@ -23,49 +23,13 @@ namespace Hypnos {
 namespace Network {
 
 struct CompletionArgs;
-using CompletionFn = void (*)(int32 res, uint32 flags, CompletionArgs* args);
+using CompletionHandler = void (*)(int32 res, uint32 flags, CompletionArgs* args);
 
 struct CompletionArgs
 {
-    enum class Type : uint16
-    {
-        Wake = 1,
-        Accept,
-        Recv,
-        Send
-    };
-
-    union Data
-    {
-        struct WakeData
-        {
-            uint16 shard_id = 0;
-        } wake;
-
-        struct AcceptData
-        {
-            uint16 shard_id = 0;
-        } accept;
-
-        struct RecvData
-        {
-            Connection* conn = nullptr;
-            uint32 generation = 0;
-        } recv;
-
-        struct SendData
-        {
-            Connection* conn = nullptr;
-            uint32 generation = 0;
-        } send;
-
-        constexpr Data() : wake() { }
-    };
-
-    void* owner = nullptr;
-    CompletionFn complete = nullptr;
-    Type type = Type::Wake;
-    Data data { };
+    CompletionHandler complete = nullptr;
+    void* user_data = nullptr;
+    uint32 generation = 0;
 };
 
 struct BufferMetadata
@@ -103,6 +67,7 @@ struct NetworkShard
     uint16 id = 0;
     uint32 cpu_id = 0;
     int32 event_fd = -1;
+    void* owner = nullptr;
     Thread* thread = nullptr;
 
     io_uring ring { };
@@ -185,8 +150,7 @@ struct NetworkShard
         params.flags = cfg.flags;
         params.sq_thread_idle = cfg.sq_thread_idle;
         this->id = shard_id;
-        wake_poll_args.type = CompletionArgs::Type::Wake;
-        wake_poll_args.data.wake.shard_id = shard_id;
+        wake_poll_args.user_data = this;
 
         if (cfg.cq_entries > cfg.sq_entries)
         {
@@ -253,15 +217,28 @@ struct NetworkShard
         return io_uring_get_sqe(&ring);
     }
 
+    inline io_uring_sqe* PrepareSqe(CompletionArgs* args)
+    {
+        assert(args != nullptr && "[NetworkShard] Completion args must not be null.");
+
+        io_uring_sqe* sqe = AcquireSqe();
+        if (sqe == nullptr)
+        {
+            return nullptr;
+        }
+
+        io_uring_sqe_set_data(sqe, args);
+        return sqe;
+    }
+
     inline Status<void> SubmitWakePoll()
     {
-        io_uring_sqe* sqe = AcquireSqe();
+        io_uring_sqe* sqe = PrepareSqe(&wake_poll_args);
         if (sqe == nullptr)
         {
             return Status<void>::Error(ErrorCode::Busy, "Failed to acquire SQE for shard wake poll.");
         }
 
-        io_uring_sqe_set_data(sqe, &wake_poll_args);
         io_uring_prep_poll_multishot(sqe, event_fd, POLLIN);
         return Status<void>::Success();
     }
@@ -382,7 +359,7 @@ struct NetworkShard
         return pending_commands.exchange(0, std::memory_order_acq_rel);
     }
 
-    inline Connection* AcquireConnection(uint16 endpoint_id, uint32 requested_pending_send_capacity)
+    inline Connection* AcquireConnection(void* endpoint_context, uint32 requested_pending_send_capacity)
     {
         assert(requested_pending_send_capacity <= pending_send_capacity && "[NetworkShard] Requested pending send capacity exceeds shard storage stride.");
         if (free_connection_slots.empty() || requested_pending_send_capacity > pending_send_capacity)
@@ -394,9 +371,8 @@ struct NetworkShard
         free_connection_slots.pop_back();
 
         Connection& conn = connections[slot_index];
-        assert(conn.state.load(std::memory_order_acquire) == ConnectionState::Vacant && "[NetworkShard] Free connection slot must be vacant.");
-        conn.endpoint_id = endpoint_id;
-        conn.shard_id = id;
+        assert(conn.state.load(std::memory_order_acquire) == Connection::State::Vacant && "[NetworkShard] Free connection slot must be vacant.");
+        conn.endpoint_context = endpoint_context;
         conn.slot = static_cast<uint16>(slot_index);
         conn.queued_send_count.store(0, std::memory_order_release);
         conn.send_ctx.pending_buffers.Reset();
@@ -406,17 +382,16 @@ struct NetworkShard
     inline bool ReleaseConnection(Connection& conn)
     {
         assert(connections != nullptr && "[NetworkShard] Connection pool is not initialized.");
-        assert(conn.shard_id == id && "[NetworkShard] Connection belongs to another shard.");
         assert(conn.slot < connection_capacity && "[NetworkShard] Connection slot is out of bounds.");
 
-        ConnectionState expected = ConnectionState::Closing;
-        if (!conn.state.compare_exchange_strong(expected, ConnectionState::Vacant, std::memory_order_acq_rel, std::memory_order_acquire))
+        Connection::State expected = Connection::State::Closing;
+        if (!conn.state.compare_exchange_strong(expected, Connection::State::Vacant, std::memory_order_acq_rel, std::memory_order_acquire))
         {
             return false;
         }
 
-        conn.endpoint_id = std::numeric_limits<uint16>::max();
         conn.sock_fd = INVALID_FD;
+        conn.endpoint_context = nullptr;
         conn.queued_send_count.store(0, std::memory_order_release);
         conn.send_ctx.pending_buffers.Reset();
         free_connection_slots.push_back(conn.slot);
@@ -430,8 +405,7 @@ private:
         for (size_t slot_index = 0; slot_index < connection_capacity; ++slot_index)
         {
             Connection& conn = connections[slot_index];
-            conn.endpoint_id = std::numeric_limits<uint16>::max();
-            conn.shard_id = id;
+            conn.endpoint_context = nullptr;
             conn.slot = static_cast<uint16>(slot_index);
             conn.send_ctx.pending_buffers.Bind(pending_buffer_storage.data() + slot_index * pending_send_capacity, pending_send_capacity);
             free_connection_slots.push_back(static_cast<uint32>(connection_capacity - 1 - slot_index));

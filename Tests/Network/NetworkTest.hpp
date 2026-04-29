@@ -1,9 +1,10 @@
 #pragma once
 
-#include <Hypnos/Network/NetworkManager.hpp>
 #include "../../Runtime/Network/Connection.hpp"
-#include "../../Runtime/Network/EndpointRuntime.hpp"
+#include "../../Runtime/Network/Endpoint.hpp"
 #include "../../Runtime/Network/NetworkShard.hpp"
+#include <Hypnos/Network/IMessage.hpp>
+#include <Hypnos/Network/NetworkManager.hpp>
 #include <array>
 #include <cassert>
 #include <sys/mman.h>
@@ -28,21 +29,114 @@ struct TaggedCompletionArgs : Network::CompletionArgs
     int tag = 0;
 };
 
-class OwnerThreadProbeEndpoint : public Network::EndpointRuntime
+class FakeMessage : public Network::IMessage
 {
 public:
-    OwnerThreadProbeEndpoint() : EndpointRuntime(0, EndpointRuntime::Type::Server) { }
+    enum class Mode : uint8
+    {
+        Success,
+        PackFailure,
+        Oversized
+    };
+
+    explicit FakeMessage(Mode mode) : mode(mode) { }
+
+    uint16 Id() const noexcept override { return 7; }
+
+    Status<Network::PacketSize> Pack(byte* buf, Network::PacketSize capacity) const override
+    {
+        if (mode == Mode::PackFailure)
+        {
+            return Status<Network::PacketSize>::Error(ErrorCode::InvalidFormat, "[NetworkTests] Fake pack failure.");
+        }
+
+        if (mode == Mode::Oversized)
+        {
+            return Status<Network::PacketSize>::Success(static_cast<Network::PacketSize>(Network::MAX_PACKET_SIZE + 1));
+        }
+
+        if (capacity < 3)
+        {
+            return Status<Network::PacketSize>::Error(ErrorCode::InvalidArgument, "[NetworkTests] Fake pack capacity is too small.");
+        }
+
+        buf[0] = byte { 11 };
+        buf[1] = byte { 22 };
+        buf[2] = byte { 33 };
+        return Status<Network::PacketSize>::Success(static_cast<Network::PacketSize>(3));
+    }
+
+    Status<void> Unpack(const byte* buf, Network::PacketSize len) override
+    {
+        (void)buf;
+        (void)len;
+        return Status<void>::Success();
+    }
+
+private:
+    Mode mode;
+};
+
+class OwnerThreadProbeEndpoint : public Network::Endpoint
+{
+public:
+    OwnerThreadProbeEndpoint() : Endpoint(0) { }
 
     Status<void> Start() override { return Status<void>::Success(); }
     Status<void> Stop() override { return Status<void>::Success(); }
     void Dispatch() override { }
 
-    bool ProbeOwnerThread() { return ClaimOwnerThread(); }
+    bool ProbeOwnerThread()
+    {
+#if defined(DEBUG)
+        return IsOwnerThread();
+#else
+        return true;
+#endif
+    }
+};
+
+class SendProbeServer : public Network::Server
+{
+public:
+    using Network::Server::Send;
+
+    SendProbeServer() : Server(0, 1) { }
+
+    Status<void> Close(Network::ConnectionHandle conn_handle) override
+    {
+        last_handle = conn_handle;
+        ++close_count;
+        return Status<void>::Success();
+    }
+
+    Status<void> Send(Network::ConnectionHandle conn_handle, const Network::EncodedMessage& encoded) override
+    {
+        last_handle = conn_handle;
+        last_encoded = encoded;
+        ++send_count;
+        return Status<void>::Success();
+    }
+
+    Network::ConnectionHandle MakeHandle(Network::Connection& conn) const noexcept
+    {
+        return CreateHandle(conn);
+    }
+
+    Network::Connection* Resolve(Network::ConnectionHandle conn_handle) const noexcept
+    {
+        return ResolveHandle(conn_handle);
+    }
+
+    Network::ConnectionHandle last_handle;
+    Network::EncodedMessage last_encoded;
+    uint32 close_count = 0;
+    uint32 send_count = 0;
 };
 
 void RecordPrimaryCompletion(int32 res, uint32 flags, Network::CompletionArgs* args)
 {
-    CompletionTrace& trace = *static_cast<CompletionTrace*>(args->owner);
+    CompletionTrace& trace = *static_cast<CompletionTrace*>(args->user_data);
     TaggedCompletionArgs& tagged_args = *static_cast<TaggedCompletionArgs*>(args);
     const int call_index = trace.call_count++;
     trace.tags[call_index] = 100 + tagged_args.tag;
@@ -52,7 +146,7 @@ void RecordPrimaryCompletion(int32 res, uint32 flags, Network::CompletionArgs* a
 
 void RecordSecondaryCompletion(int32 res, uint32 flags, Network::CompletionArgs* args)
 {
-    CompletionTrace& trace = *static_cast<CompletionTrace*>(args->owner);
+    CompletionTrace& trace = *static_cast<CompletionTrace*>(args->user_data);
     TaggedCompletionArgs& tagged_args = *static_cast<TaggedCompletionArgs*>(args);
     const int call_index = trace.call_count++;
     trace.tags[call_index] = 200 + tagged_args.tag;
@@ -66,16 +160,12 @@ void TokenizedCompletionDispatchPasses()
 
     TaggedCompletionArgs first_args { };
     first_args.complete = &RecordPrimaryCompletion;
-    first_args.owner = &trace;
-    first_args.type = Network::CompletionArgs::Type::Wake;
-    first_args.data.wake.shard_id = 1;
+    first_args.user_data = &trace;
     first_args.tag = 1;
 
     TaggedCompletionArgs second_args { };
     second_args.complete = &RecordSecondaryCompletion;
-    second_args.owner = &trace;
-    second_args.type = Network::CompletionArgs::Type::Wake;
-    second_args.data.wake.shard_id = 1;
+    second_args.user_data = &trace;
     second_args.tag = 2;
 
     assert(first_args.complete != nullptr && "[NetworkTests] First completion callback must be bound.");
@@ -90,20 +180,64 @@ void TokenizedCompletionDispatchPasses()
 
 void ConnectionHandlePasses()
 {
+    SendProbeServer server { };
     Network::Connection conn { };
-    conn.endpoint_id = 9;
-    conn.shard_id = 3;
     conn.slot = 7;
     conn.generation.store(5, std::memory_order_release);
 
-    const Network::ConnectionHandle conn_handle = conn.CreateHandle();
-    const Network::ConnectionHandle same_conn_handle = conn.CreateHandle();
+    const Network::ConnectionHandle conn_handle = server.MakeHandle(conn);
+    const Network::ConnectionHandle same_conn_handle = server.MakeHandle(conn);
     assert(conn_handle.IsValid() && "[NetworkTests] Connection handle should remain valid for active transport peers.");
     assert(conn_handle == same_conn_handle && "[NetworkTests] Connection handles should preserve peer identity for equality checks.");
-    assert(!(Network::ConnectionHandle { }) && "[NetworkTests] Default connection handles should be invalid.");
+    assert(server.Resolve(conn_handle) == &conn && "[NetworkTests] Connection handles should resolve to their live runtime connection.");
 
-    const Network::ConnectionEvent evt { Network::ConnectionEventType::Connected, conn_handle };
+    conn.generation.fetch_add(1, std::memory_order_acq_rel);
+    assert(server.Resolve(conn_handle) == nullptr && "[NetworkTests] Stale connection handles should not resolve after generation changes.");
+
+    const Network::ConnectionEvent evt { Network::ConnectionEvent::Type::Connected, conn_handle };
     assert(evt.handle == conn_handle && "[NetworkTests] Connection events should continue to carry the transport peer handle.");
+}
+
+void EncodedMessagePasses()
+{
+    SendProbeServer server { };
+    Network::EncodedMessage encoded;
+
+    FakeMessage message(FakeMessage::Mode::Success);
+    Status<void> status = server.Encode(message, encoded);
+    assert(!status.IsFailed() && "[NetworkTests] Server should encode valid messages.");
+    assert(encoded.IsValid() && encoded.size == 3 && "[NetworkTests] Encoded messages should expose their packed size.");
+    assert(encoded.buffer[0] == byte { 11 } && encoded.buffer[1] == byte { 22 } && encoded.buffer[2] == byte { 33 } && "[NetworkTests] Encoded messages should preserve packed bytes.");
+
+    FakeMessage failing_message(FakeMessage::Mode::PackFailure);
+    Status<void> failing_status = server.Encode(failing_message, encoded);
+    assert(failing_status.IsFailed() && encoded.size == 0 && "[NetworkTests] Server should preserve pack failures as encode failures.");
+
+    FakeMessage oversized_message(FakeMessage::Mode::Oversized);
+    Status<void> oversized_status = server.Encode(oversized_message, encoded);
+    assert(oversized_status.IsFailed() && encoded.size == 0 && "[NetworkTests] Server should reject oversized encoded messages.");
+}
+
+void SendMessageWrapperPasses()
+{
+    SendProbeServer server { };
+    FakeMessage message(FakeMessage::Mode::Success);
+    const Network::ConnectionHandle conn_handle { };
+
+    Status<void> status = server.Send(conn_handle, message);
+    assert(!status.IsFailed() && "[NetworkTests] Server message send wrapper should encode and forward to encoded send.");
+    assert(server.send_count == 1 && "[NetworkTests] Server message send wrapper should call encoded send once.");
+    assert(server.last_encoded.IsValid() && server.last_encoded.size == 3 && "[NetworkTests] Server message send wrapper should forward encoded bytes.");
+}
+
+void CloseSingleTargetPasses()
+{
+    SendProbeServer server { };
+    const Network::ConnectionHandle conn_handle { };
+
+    Status<void> status = server.Close(conn_handle);
+    assert(!status.IsFailed() && "[NetworkTests] Server close should accept a single target handle.");
+    assert(server.close_count == 1 && server.last_handle == conn_handle && "[NetworkTests] Server close should forward the single target handle.");
 }
 
 void SharedConnectionPoolPasses()
@@ -117,18 +251,21 @@ void SharedConnectionPoolPasses()
     Status<void> status = shard.Initialize(io_uring_cfg, 1);
     assert(!status.IsFailed() && "[NetworkTests] NetworkShard should initialize its shared connection pool.");
 
-    Network::Connection* first = shard.AcquireConnection(3, 2);
-    Network::Connection* second = shard.AcquireConnection(4, 2);
+    int first_context = 3;
+    int second_context = 4;
+    int third_context = 5;
+
+    Network::Connection* first = shard.AcquireConnection(&first_context, 2);
+    Network::Connection* second = shard.AcquireConnection(&second_context, 2);
     assert(first != nullptr && second != nullptr && first != second && "[NetworkTests] Shared connection pool should issue distinct slots.");
-    assert(first->endpoint_id == 3 && second->endpoint_id == 4 && "[NetworkTests] Shared slots should preserve endpoint ownership.");
-    assert(first->shard_id == 1 && second->shard_id == 1 && "[NetworkTests] Shared slots should use shard-global IDs.");
+    assert(first->endpoint_context == &first_context && second->endpoint_context == &second_context && "[NetworkTests] Shared slots should preserve endpoint ownership context.");
 
-    assert(shard.AcquireConnection(5, 2) == nullptr && "[NetworkTests] Shared connection pool should report exhaustion.");
+    assert(shard.AcquireConnection(&third_context, 2) == nullptr && "[NetworkTests] Shared connection pool should report exhaustion.");
 
-    first->state.store(Network::ConnectionState::Closing, std::memory_order_release);
+    first->state.store(Network::Connection::State::Closing, std::memory_order_release);
     assert(shard.ReleaseConnection(*first) && "[NetworkTests] Closing connections should return to the shared free list.");
-    Network::Connection* reused = shard.AcquireConnection(5, 2);
-    assert(reused == first && reused->endpoint_id == 5 && "[NetworkTests] Released shared slots should be reusable by another endpoint.");
+    Network::Connection* reused = shard.AcquireConnection(&third_context, 2);
+    assert(reused == first && reused->endpoint_context == &third_context && "[NetworkTests] Released shared slots should be reusable by another endpoint context.");
 }
 
 void SendBufferLayoutPasses()
@@ -175,8 +312,10 @@ void PendingBufferRingPasses()
 
 void EndpointOwnerThreadContractPasses()
 {
+#if defined(DEBUG)
     OwnerThreadProbeEndpoint endpoint { };
-    assert(endpoint.ProbeOwnerThread() && "[NetworkTests] Endpoint should claim the first caller as its owner thread.");
+    endpoint.BindOwnerThread();
+    assert(endpoint.ProbeOwnerThread() && "[NetworkTests] Endpoint should accept its bound owner thread.");
 
     bool second_thread_result = true;
     std::thread second_thread([&endpoint, &second_thread_result]()
@@ -186,6 +325,7 @@ void EndpointOwnerThreadContractPasses()
     second_thread.join();
 
     assert(!second_thread_result && "[NetworkTests] Endpoint owner-thread contract should reject calls from a second thread.");
+#endif
 }
 
 Network::NetworkConfig MakeNetworkConfig(std::initializer_list<std::initializer_list<uint16>> server_shard_bindings)
@@ -260,6 +400,9 @@ void NetworkPasses()
 {
     TokenizedCompletionDispatchPasses();
     ConnectionHandlePasses();
+    EncodedMessagePasses();
+    SendMessageWrapperPasses();
+    CloseSingleTargetPasses();
     SharedConnectionPoolPasses();
     SendBufferLayoutPasses();
     PendingBufferRingPasses();
