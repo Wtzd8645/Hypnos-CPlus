@@ -1,4 +1,4 @@
-#include "Hypnos/GaemState/GameStateManager.hpp"
+#include "Hypnos/GameState/GameStateManager.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

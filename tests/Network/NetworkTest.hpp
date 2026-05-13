@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../Runtime/Network/Connection.hpp"
-#include "../../Runtime/Network/Endpoint.hpp"
-#include "../../Runtime/Network/NetworkShard.hpp"
+#include "Network/Connection.hpp"
+#include "Network/Endpoint.hpp"
+#include "Network/NetworkShard.hpp"
 #include <Hypnos/Network/IMessage.hpp>
 #include <Hypnos/Network/NetworkManager.hpp>
 #include <array>

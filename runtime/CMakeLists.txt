@@ -19,12 +19,19 @@ target_compile_options(Hypnos PRIVATE
     $<$<CONFIG:MinSizeRel>:-Os -DNDEBUG>
 )
 
-target_include_directories(Hypnos PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../Include" 
-    "${CMAKE_CURRENT_SOURCE_DIR}/../Packages/mimalloc/include"
+target_include_directories(Hypnos
+PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+PRIVATE
+    "${PROJECT_SOURCE_DIR}/packages/mimalloc/include"
 )
 
-target_link_libraries(Hypnos PUBLIC Hypnos-Core)
+target_link_libraries(Hypnos
+PUBLIC
+    $<BUILD_INTERFACE:Hypnos-Core>
+    $<INSTALL_INTERFACE:Blanketmen::Hypnos-Core>
+)
 if (UNIX)
     target_link_libraries(Hypnos PRIVATE uring pthread)
 endif ()
@@ -40,7 +47,7 @@ if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     )
 
     # Install the headers
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../Include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
     # Install the export set for the target
     install(EXPORT HypnosTargets
@@ -52,7 +59,7 @@ if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     # Generate the config file
     include(CMakePackageConfigHelpers)
     configure_package_config_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/CMake/HypnosConfig.cmake.in"
+        "${PROJECT_SOURCE_DIR}/cmake/HypnosConfig.cmake.in"
         "${CMAKE_CURRENT_BINARY_DIR}/HypnosConfig.cmake"
         INSTALL_DESTINATION lib/cmake/Hypnos
     )

@@ -1,4 +1,11 @@
 # Prerequisites
+.next/
+.output/
+bin/
+build/
+obj/
+out/
+target/
 *.d
 
 # Compiled Object files

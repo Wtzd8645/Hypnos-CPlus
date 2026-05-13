@@ -1,6 +1,6 @@
-[submodule "Packages/Hypnos-Core"]
-	path = Packages/Hypnos-Core
+[submodule "packages/Hypnos-Core"]
+	path = packages/Hypnos-Core
 	url = https://github.com/Wtzd8645/Hypnos-Core-CPlus.git
-[submodule "Packages/mimalloc"]
-	path = Packages/mimalloc
+[submodule "packages/mimalloc"]
+	path = packages/mimalloc
 	url = https://github.com/microsoft/mimalloc.git

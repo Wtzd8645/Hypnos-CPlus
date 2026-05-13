@@ -1,0 +1,5 @@
+# Normalize line endings across all text files to use LF (Unix-style).
+# This ensures consistency in line endings across different operating systems.
+# It converts CRLF (Windows-style) line endings to LF when committing,
+# and preserves LF during checkout, preventing issues with cross-platform collaboration.
+* text eol=lf

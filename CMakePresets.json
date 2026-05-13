@@ -5,8 +5,8 @@
             "name": "base",
             "hidden": true,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/bin/${presetName}",
-            "installDir": "${sourceDir}/build/install/${presetName}",
+            "binaryDir": "${sourceDir}/bin/${presetName}",
+            "installDir": "${sourceDir}/bin/install/${presetName}",
             "vendor": {
                 "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": {
                     "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}"
@@ -17,7 +17,7 @@
             "name": "gcc-debug",
             "displayName": "GCC Debug",
             "inherits": "base",
-            "toolchainFile": "CMake/toolchain-gcc.cmake",
+            "toolchainFile": "cmake/toolchain-gcc.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
             },
@@ -39,7 +39,7 @@
             "name": "clang-debug",
             "displayName": "Clang Debug",
             "inherits": "base",
-            "toolchainFile": "CMake/toolchain-clang.cmake",
+            "toolchainFile": "cmake/toolchain-clang.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
             },
