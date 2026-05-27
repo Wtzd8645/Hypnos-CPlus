@@ -4,30 +4,16 @@
 #include "NetworkConfig.hpp"
 #include "NetworkDefs.hpp"
 #include "Server.hpp"
-#include <Hypnos-Core/Container/List.hpp>
-#include <thread>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-#if defined(DEBUG)
-#define HYP_NETWORK_MANAGER_BIND_OWNER_THREAD(manager) (manager).BindOwnerThread()
-#define HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(manager, context) (manager).AssertOwnerThread(context)
-#else
-#define HYP_NETWORK_MANAGER_BIND_OWNER_THREAD(manager) do { (void)(manager); } while (false)
-#define HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(manager, context) do { (void)(manager); (void)(context); } while (false)
-#endif
-
-struct CompletionArgs;
-struct NetworkShard;
-class Endpoint;
-
 class NetworkManager
 {
 public:
-    NetworkManager() : running(false), terminal_error_code(0) { }
-    ~NetworkManager() { Release(); }
+    NetworkManager();
+    ~NetworkManager();
 
     NetworkManager(const NetworkManager&) = delete;
     NetworkManager& operator=(const NetworkManager&) = delete;
@@ -35,38 +21,25 @@ public:
     NetworkManager(NetworkManager&&) = delete;
     NetworkManager& operator=(NetworkManager&&) = delete;
 
-    Status<void> Configure(const NetworkConfig& cfg);
-    void Release();
+    Status<void> Configure(NetworkConfig&& config);
     Status<void> Start();
-    void Stop();
+    Status<void> Stop();
+    void Release();
     Status<void> Update();
 
-    Server* GetServer(uint8 id) const;
-    Client* GetClient(uint8 id) const;
+    Server* GetServer(EndpointId id);
+    Client* GetClient(EndpointId id);
+    ManagerState State() const noexcept;
 
 private:
-    alignas(CACHE_LINE_SIZE) Atomic<bool> running;
-    Atomic<int32> terminal_error_code;
+    void* core = nullptr;
 
-    NetworkConfig cfg;
-    List<uint32> shard_cpu_ids;
-    List<NetworkShard*> shards;
-    List<List<Endpoint*>> shard_endpoints;
-    List<Endpoint*> endpoints;
-
-#if defined(DEBUG)
-    std::thread::id owner_thread_id { };
+    Status<void> ValidateConfig(const NetworkConfig& config) const;
+    Status<void> ValidateServerConfig(const ServerConfig& server_config, const NetworkConfig& config) const;
+    Status<void> ValidateClientConfig(const ClientConfig& client_config, const NetworkConfig& config) const;
+    Status<void> CheckOwnerThread(const char* context) const;
     void BindOwnerThread() noexcept;
     bool IsOwnerThread() const noexcept;
-    void AssertOwnerThread(const char* context) const noexcept;
-#endif
-
-    static void OnWakeCqe(int32 res, uint32 flags, CompletionArgs* args);
-
-    void RunShardLoop(NetworkShard& shard);
-    bool HandleWakeCqe(NetworkShard& shard, uint32 flags);
-    void WakeShards();
-    void OnCqeError(int32 err);
 };
 
 } // namespace Network

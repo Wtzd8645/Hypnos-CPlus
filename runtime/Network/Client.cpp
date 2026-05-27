@@ -1,4 +1,4 @@
-#include <Hypnos/Network/Server.hpp>
+#include <Hypnos/Network/Client.hpp>
 
 #include "NetworkCore.hpp"
 
@@ -8,7 +8,7 @@ namespace Network {
 
 static Status<void> NotReady()
 {
-    return Status<void>::Error(ToErrorCode(NetworkStatus::NotReady), "[Server] Endpoint is not bound.");
+    return Status<void>::Error(ToErrorCode(NetworkStatus::NotReady), "[Client] Endpoint is not bound.");
 }
 
 static Endpoint* ResolveEndpoint(void* endpoint) noexcept
@@ -16,12 +16,12 @@ static Endpoint* ResolveEndpoint(void* endpoint) noexcept
     return static_cast<Endpoint*>(endpoint);
 }
 
-Server::Server(void* endpoint) :
+Client::Client(void* endpoint) :
     endpoint(endpoint)
 {
 }
 
-Status<void> Server::Register(MessageHandler handler)
+Status<void> Client::Register(MessageHandler handler)
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
     return endpoint == nullptr
@@ -29,7 +29,7 @@ Status<void> Server::Register(MessageHandler handler)
         : endpoint->Register(handler);
 }
 
-Status<void> Server::Register(ConnectionEventHandler handler)
+Status<void> Client::Register(ConnectionEventHandler handler)
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
     return endpoint == nullptr
@@ -37,7 +37,7 @@ Status<void> Server::Register(ConnectionEventHandler handler)
         : endpoint->Register(handler);
 }
 
-Status<void> Server::Register(ErrorHandler handler)
+Status<void> Client::Register(ErrorHandler handler)
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
     return endpoint == nullptr
@@ -45,34 +45,42 @@ Status<void> Server::Register(ErrorHandler handler)
         : endpoint->Register(handler);
 }
 
-Status<void> Server::Send(ConnectionHandle connection, IMessage& message)
+Status<void> Client::Connect()
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
     return endpoint == nullptr
         ? NotReady()
-        : endpoint->Send(connection, message);
+        : endpoint->Connect();
 }
 
-Status<void> Server::Close(ConnectionHandle connection)
+Status<void> Client::Disconnect()
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
     return endpoint == nullptr
         ? NotReady()
-        : endpoint->Close(connection);
+        : endpoint->Disconnect();
 }
 
-ServerState Server::State() const noexcept
+Status<void> Client::Send(IMessage& message)
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
-    return endpoint != nullptr && endpoint->kind == EndpointKind::Server
-        ? endpoint->server_state
-        : ServerState::Stopped;
+    return endpoint == nullptr
+        ? NotReady()
+        : endpoint->Send(message);
 }
 
-EndpointId Server::Id() const noexcept
+ClientState Client::State() const noexcept
 {
     Endpoint* endpoint = ResolveEndpoint(this->endpoint);
-    return endpoint != nullptr && endpoint->kind == EndpointKind::Server
+    return endpoint != nullptr && endpoint->kind == EndpointKind::Client
+        ? endpoint->client_state
+        : ClientState::Disconnected;
+}
+
+EndpointId Client::Id() const noexcept
+{
+    Endpoint* endpoint = ResolveEndpoint(this->endpoint);
+    return endpoint != nullptr && endpoint->kind == EndpointKind::Client
         ? endpoint->id
         : INVALID_ENDPOINT_ID;
 }

@@ -1,54 +1,37 @@
 #pragma once
 
 #include "NetworkDefs.hpp"
-#include <cstddef>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-struct Connection;
-class Server;
-
 struct ConnectionHandle
 {
     ConnectionHandle() = default;
 
-    bool IsValid() const noexcept
-    {
-        return conn != nullptr && generation != 0;
-    }
-
-private:
-    friend class Server;
-    friend bool operator==(const ConnectionHandle& lhs, const ConnectionHandle& rhs) noexcept = default;
-
-    ConnectionHandle(Connection* conn, uint32 generation) :
-        conn(conn),
+    ConnectionHandle(EndpointId endpoint_id, uint32 slot, uint32 generation) :
+        endpoint_id(endpoint_id),
+        slot(slot),
         generation(generation)
     {
     }
 
-    Connection* conn = nullptr;
-    uint32 generation = 0;
-};
-
-struct ConnectionEvent
-{
-    enum class Type : uint8
+    bool IsValid() const noexcept
     {
-        Connected,
-        Disconnected,
-        Count
-    };
-
-    static size_t ToIndex(Type type) noexcept
-    {
-        return static_cast<size_t>(type);
+        return endpoint_id != INVALID_ENDPOINT_ID && generation != 0;
     }
 
-    Type type = Type::Connected;
-    ConnectionHandle handle;
+    EndpointId Endpoint() const noexcept { return endpoint_id; }
+    uint32 Slot() const noexcept { return slot; }
+    uint32 Generation() const noexcept { return generation; }
+
+    friend bool operator==(const ConnectionHandle& lhs, const ConnectionHandle& rhs) noexcept = default;
+
+private:
+    EndpointId endpoint_id = INVALID_ENDPOINT_ID;
+    uint32 slot = 0;
+    uint32 generation = 0;
 };
 
 } // namespace Network

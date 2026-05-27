@@ -6,56 +6,67 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-struct IPacketCodec
-{
-    virtual ~IPacketCodec() = default;
-
-    virtual bool Encode(uint8 id, const byte* src_buf, PacketSize src_len, byte* dest_buf, PacketSize& dest_len) = 0;
-    virtual const byte* Decode(uint8 id, const byte* src_buf, PacketSize src_len, PacketSize& dest_len) = 0;
-};
-
 struct IMessage
 {
     virtual ~IMessage() = default;
 
-    virtual uint16 Id() const noexcept = 0;
-    virtual Status<PacketSize> Pack(byte* buf, PacketSize capacity) const = 0;
-    virtual Status<void> Unpack(const byte* buf, PacketSize len) = 0;
+    virtual uint8 CodecId() const noexcept = 0;
 };
 
-struct EncodedMessage
+class IMessageAllocator
 {
-    PacketSize size = 0;
-    byte buffer[MAX_PACKET_SIZE] = { };
+public:
+    virtual ~IMessageAllocator() = default;
 
-    bool IsValid() const noexcept
+    virtual IMessage* Acquire(uint8 codec_id) = 0;
+    virtual void Release(IMessage& message) = 0;
+};
+
+class ICodec
+{
+public:
+    virtual ~ICodec() = default;
+
+    virtual uint8 Id() const noexcept = 0;
+    virtual Status<PacketSize> Encode(IMessage& message, byte* buffer, PacketSize capacity) = 0;
+    virtual Status<IMessage*> Decode(const byte* buffer, PacketSize size, IMessageAllocator& allocator) = 0;
+};
+
+class ICodecRegistry
+{
+public:
+    virtual ~ICodecRegistry() = default;
+
+    virtual Status<void> Validate() const = 0;
+    virtual ICodec* Find(uint8 codec_id) const = 0;
+};
+
+class IPacketPipeline
+{
+public:
+    virtual ~IPacketPipeline() = default;
+
+    virtual Status<PacketSize> Encode(ICodec& codec, IMessage& message, byte* buffer, PacketSize capacity) = 0;
+    virtual Status<IMessage*> Decode(ICodec& codec, const byte* buffer, PacketSize size, IMessageAllocator& allocator) = 0;
+};
+
+struct OwnedNetworkObjects
+{
+    UniquePtr<ICodecRegistry> codec_registry;
+    UniquePtr<IMessageAllocator> message_allocator;
+    UniquePtr<IPacketPipeline> packet_pipeline;
+
+    bool IsComplete() const noexcept
     {
-        return size > 0 && size <= MAX_PACKET_SIZE;
+        return codec_registry != nullptr && message_allocator != nullptr && packet_pipeline != nullptr;
     }
 };
 
-struct IMessageAllocator
+struct PacketBuffer
 {
-    virtual ~IMessageAllocator() = default;
-
-    virtual IMessage* Acquire(uint32 id) = 0;
-    virtual IMessage* Acquire(const byte* buf) = 0;
-    virtual void Release(IMessage* msg) = 0;
-};
-
-struct IMessageCodec
-{
-    virtual ~IMessageCodec() = default;
-
-    virtual IMessage* Decode(const byte* buf, PacketSize len) = 0;
-    virtual void Release(IMessage* msg) = 0;
-};
-
-struct IMessageDispatcher
-{
-    virtual ~IMessageDispatcher() = default;
-
-    virtual void Dispatch(const IMessage& msg) = 0;
+    uint8 codec_id = 0;
+    PacketSize size = 0;
+    byte* bytes = nullptr;
 };
 
 } // namespace Network

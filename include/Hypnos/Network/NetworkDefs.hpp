@@ -6,47 +6,108 @@ namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-constexpr uint32 MAX_ETH_MTU = 1500;  // Ethernet (Standard) MTU.
-constexpr uint32 MAX_WIFI_MTU = 1500;  // Wi-Fi (802.11) MTU.
-constexpr uint32 MAX_PPPoE_MTU = 1492;  // PPPoE (DSL) MTU.
-constexpr uint32 MAX_VPN_MTU = 1476;  // VPN (GRE Tunnel) MTU.
-constexpr uint32 MAX_JUMBO_MTU = 9000;  // Jumbo Frames MTU.
-constexpr uint32 MAX_LOOPBACK_MTU = 65536;  // Loopback (lo Interface) MTU.
-constexpr uint32 MIN_IPV6_MTU = 1280;  // IPv6 (Minimum) MTU.
-constexpr uint32 MAX_PACKET_SIZE = MAX_VPN_MTU;
-constexpr uint32 MAX_BUFFER_SIZE = 2048;
-
-constexpr int32 INVALID_FD = -1;
-constexpr int32 SOCKET_ERROR = -1;
-constexpr uint16 DEFAULT_PORT = 27015;
-constexpr uint8 PACKET_CODEC_NONE = 0;
-
+using EndpointId = uint16;
 using PacketSize = uint16;
+
+constexpr PacketSize PACKET_HEADER_SIZE = 4;
+constexpr PacketSize MAX_PACKET_PAYLOAD_SIZE = 65535;
+constexpr EndpointId INVALID_ENDPOINT_ID = 0;
 
 enum class TransportProtocol : uint8
 {
-    Mock = 0,
-    Tcp = 1,
-    Udp = 2,
-    Kcp = 3
+    Tcp,
+    Udp,
+    Kcp
 };
 
-struct TransportHeader
+enum class BackendType : uint8
 {
-    uint16 length;
-    uint8 codec;
-    uint8 flags;
+    None,
+    Epoll,
+    IoUring
 };
 
-struct ProtocolHeader
+enum class NetworkStatus : uint8
 {
-    uint8 seq;
-    uint8 flags;
-    uint16 msg_id;
-    uint64 token;
+    InvalidConfig,
+    InvalidState,
+    InvalidHandle,
+    NotReady,
+    Busy,
+    TransportError,
+    CodecError,
+    ResourceExhausted,
+    Unsupported
 };
 
-constexpr PacketSize TRANSPORT_HEADER_SIZE = sizeof(TransportHeader);
+enum class ManagerState : uint8
+{
+    Unconfigured,
+    Configured,
+    Running,
+    Stopping
+};
+
+enum class ServerState : uint8
+{
+    Stopped,
+    Starting,
+    Listening,
+    Stopping,
+    Failed
+};
+
+enum class ClientState : uint8
+{
+    Disconnected,
+    Connecting,
+    Connected,
+    Disconnecting,
+    Failed
+};
+
+enum class ConnectionState : uint8
+{
+    Connecting,
+    Connected,
+    Closing,
+    Closed,
+    Failed
+};
+
+enum class ConnectionEventType : uint8
+{
+    Connected,
+    Disconnected,
+    Closed,
+    Failed
+};
+
+inline ErrorCode ToErrorCode(NetworkStatus status) noexcept
+{
+    switch (status)
+    {
+        case NetworkStatus::InvalidConfig:
+            return ErrorCode::ConfigurationError;
+        case NetworkStatus::InvalidState:
+            return ErrorCode::InvalidArgument;
+        case NetworkStatus::InvalidHandle:
+            return ErrorCode::InvalidHandle;
+        case NetworkStatus::NotReady:
+            return ErrorCode::NotReady;
+        case NetworkStatus::Busy:
+            return ErrorCode::Busy;
+        case NetworkStatus::TransportError:
+            return ErrorCode::IOError;
+        case NetworkStatus::CodecError:
+            return ErrorCode::InvalidFormat;
+        case NetworkStatus::ResourceExhausted:
+            return ErrorCode::ResourceExhausted;
+        case NetworkStatus::Unsupported:
+            return ErrorCode::Unsupported;
+    }
+    return ErrorCode::Unknown;
+}
 
 } // namespace Network
 } // namespace Hypnos

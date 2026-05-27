@@ -1,10 +1,8 @@
-if (UNIX)
-    set(PLATFORM_IMPL_FILES
-        "Network/NetworkUtils_Unix.cpp" "Network/TcpServer_Unix.cpp")
-endif ()
+find_package(Threads REQUIRED)
 
-add_library(Hypnos STATIC ${PLATFORM_IMPL_FILES}
-    "Network/NetworkManager.cpp" "Network/Server.cpp"
+add_library(Hypnos STATIC
+    "Network/NetworkManager.cpp" "Network/NetworkCore.cpp" "Network/Endpoint.cpp" "Network/EpollWorker_Unix.cpp" "Network/SocketUtils_Unix.cpp"
+    "Network/Server.cpp" "Network/Client.cpp" "Network/PacketFraming.cpp"
     "GameData/GameDataManager.cpp" "GameData/I18nTextManager.cpp"
     "GameState/GameStateManager.cpp"
     "GameTime/GameTimeManager.cpp" "GameTime/CountdownTimer.cpp" "GameTime/LapTimer.cpp")
@@ -31,10 +29,9 @@ target_link_libraries(Hypnos
 PUBLIC
     $<BUILD_INTERFACE:Hypnos-Core>
     $<INSTALL_INTERFACE:Blanketmen::Hypnos-Core>
+PRIVATE
+    Threads::Threads
 )
-if (UNIX)
-    target_link_libraries(Hypnos PRIVATE uring pthread)
-endif ()
 
 if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
     # Install the package

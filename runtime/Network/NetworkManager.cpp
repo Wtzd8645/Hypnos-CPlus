@@ -1,640 +1,458 @@
-#include "Hypnos/Network/NetworkManager.hpp"
-#include "Hypnos/Network/Server.hpp"
-#include "Endpoint.hpp"
-#include "NetworkShard.hpp"
-#include "TcpServer.hpp"
-#include <Hypnos-Core/Base/Cpu/CpuUtils.hpp>
-#include <algorithm>
+#include <Hypnos/Network/NetworkManager.hpp>
+
+#include "NetworkCore.hpp"
+
 #include <cassert>
-#include <cstring>
-#include <functional>
-#include <limits>
-#include <sys/eventfd.h>
-#include <unistd.h>
-#include <unordered_set>
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
-
-namespace {
-
-size_t ResolveEndpointShardCapacity(size_t total_capacity, size_t bound_shard_count, size_t bound_shard_index) noexcept
+NetworkManager::NetworkManager() :
+    core(new NetworkCore())
 {
-    if (bound_shard_count == 0)
-    {
-        return 0;
-    }
-
-    const size_t base = total_capacity / bound_shard_count;
-    const size_t remainder = total_capacity % bound_shard_count;
-    return base + (bound_shard_index < remainder ? 1 : 0);
 }
 
-size_t ResolveArgsCapacity(size_t connection_capacity) noexcept
+NetworkManager::~NetworkManager()
 {
-    return connection_capacity * 2 + 1 + 8;
+    if (core != nullptr)
+    {
+        Release();
+        delete static_cast<NetworkCore*>(core);
+        core = nullptr;
+    }
 }
 
-uint16 ResolveShardCount(const NetworkConfig& config, uint32 available_cpu_count) noexcept
+ManagerState NetworkManager::State() const noexcept
 {
-    if (!config.shard_cpu_ids.empty())
+    const NetworkCore* network_core = static_cast<const NetworkCore*>(core);
+    if (network_core != nullptr && network_core->owner_thread_id != std::thread::id { } && !IsOwnerThread())
     {
-        if (config.shard_count == 0)
-        {
-            return static_cast<uint16>(config.shard_cpu_ids.size());
-        }
-
-        return static_cast<uint16>(std::min<size_t>(config.shard_count, config.shard_cpu_ids.size()));
+        assert(false && "[NetworkManager] State must be called from the owner thread.");
+        return ManagerState::Unconfigured;
     }
 
-    if (config.shard_count != 0)
-    {
-        return static_cast<uint16>(std::min<uint32>(config.shard_count, available_cpu_count));
-    }
-
-    if (available_cpu_count <= 1)
-    {
-        return 1;
-    }
-
-    return static_cast<uint16>(available_cpu_count - 1);
+    return network_core != nullptr ? network_core->manager_state : ManagerState::Unconfigured;
 }
 
-} // namespace
-
-Status<void> NetworkManager::Configure(const NetworkConfig& config)
+Status<void> NetworkManager::Configure(NetworkConfig&& network_config)
 {
-    assert(shards.empty() && "[NetworkManager] Already configured.");
-    HYP_NETWORK_MANAGER_BIND_OWNER_THREAD(*this);
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    BindOwnerThread();
 
-    if (config.io_uring.sq_entries == 0)
+    Status<void> owner_status = CheckOwnerThread("[NetworkManager] Configure must be called from the owner thread.");
+    if (owner_status.IsFailed())
     {
-        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] io_uring sq_entries must be greater than zero.");
+        return owner_status;
     }
 
-    if (config.io_buffers.empty())
+    if (network_core->is_dispatching_callbacks)
     {
-        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] At least one recv buffer group is required.");
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Configure is not allowed during callback dispatch.");
     }
 
-    if (config.servers.empty() && config.clients.empty())
+    if (network_core->manager_state != ManagerState::Unconfigured)
     {
-        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] At least one endpoint (server or client) is required.");
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Configure is only valid while unconfigured.");
     }
 
-    if (!config.clients.empty())
+    Status<void> validation_status = ValidateConfig(network_config);
+    if (validation_status.IsFailed())
     {
-        return Status<void>::Error(ErrorCode::Unsupported, "[NetworkManager] Client configuration is not supported yet.");
+        return validation_status;
     }
 
-    const size_t endpoint_count = config.servers.size() + config.clients.size();
-    if (endpoint_count > static_cast<size_t>(std::numeric_limits<uint8>::max()))
+    network_core->config = std::move(network_config);
+    network_core->servers.clear();
+    network_core->clients.clear();
+    network_core->endpoints.clear();
+
+    network_core->servers.resize(network_core->config.servers.size());
+    for (size_t i = 0; i < network_core->config.servers.size(); ++i)
     {
-        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Endpoint count exceeds uint8 id range.");
-    }
+        Server& server = network_core->servers[i];
+        server.endpoint = nullptr;
 
-    uint32 cpu_ids[CpuUtils::MaxCpuIdCount];
-    const uint32 available_cpu_count = CpuUtils::GetAvailableCpuIds(cpu_ids);
-    if (available_cpu_count == 0)
-    {
-        return Status<void>::Error(ErrorCode::InitializationFailed, "[NetworkManager] Failed to discover available CPU ids.");
-    }
-
-    const uint16 shard_count = ResolveShardCount(config, available_cpu_count);
-    if (shard_count == 0)
-    {
-        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Shard count must be greater than zero.");
-    }
-
-    if (shard_count > std::numeric_limits<uint8>::max())
-    {
-        return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Shard count exceeds uint8 id range.");
-    }
-
-    shard_cpu_ids.clear();
-    shard_endpoints.clear();
-    if (!config.shard_cpu_ids.empty())
-    {
-        shard_cpu_ids.assign(config.shard_cpu_ids.begin(), config.shard_cpu_ids.begin() + shard_count);
-    }
-    else
-    {
-        shard_cpu_ids.assign(cpu_ids, cpu_ids + shard_count);
-    }
-
-    List<size_t> shard_args_pool_capacities(shard_count, 0);
-    List<size_t> shard_framing_pool_capacities(shard_count, 0);
-    List<size_t> shard_send_pool_capacities(shard_count, 0);
-    List<size_t> shard_connection_capacities(shard_count, 0);
-    List<uint32> shard_pending_send_capacities(shard_count, 1);
-
-    for (const ServerConfig& server_cfg : config.servers)
-    {
-        if (server_cfg.shard_ids.empty())
-        {
-            Release();
-            return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server must bind at least one shard.");
-        }
-
-        List<bool> shard_seen(shard_count, false);
-        for (uint16 shard_id : server_cfg.shard_ids)
-        {
-            if (shard_id >= shard_count)
-            {
-                Release();
-                return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server references an out-of-range shard id.");
-            }
-
-            if (shard_seen[shard_id])
-            {
-                Release();
-                return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server shard_ids must not contain duplicates.");
-            }
-
-            shard_seen[shard_id] = true;
-        }
-
-        const size_t bound_shard_count = server_cfg.shard_ids.size();
-        for (size_t bound_shard_index = 0; bound_shard_index < bound_shard_count; ++bound_shard_index)
-        {
-            const uint16 shard_id = server_cfg.shard_ids[bound_shard_index];
-            const size_t connection_capacity = ResolveEndpointShardCapacity(static_cast<size_t>(server_cfg.max_conns > 0 ? server_cfg.max_conns : 1), bound_shard_count, bound_shard_index);
-            const size_t send_buffer_capacity = ResolveEndpointShardCapacity(server_cfg.send_buffer_pool_capacity, bound_shard_count, bound_shard_index);
-
-            shard_connection_capacities[shard_id] += connection_capacity;
-            shard_framing_pool_capacities[shard_id] += connection_capacity;
-            shard_send_pool_capacities[shard_id] += send_buffer_capacity;
-            shard_args_pool_capacities[shard_id] += ResolveArgsCapacity(connection_capacity);
-            shard_pending_send_capacities[shard_id] = std::max<uint32>(shard_pending_send_capacities[shard_id], server_cfg.max_pending_send_buffers_per_connection);
-        }
-    }
-
-    for (uint16 shard_id = 0; shard_id < shard_count; ++shard_id)
-    {
-        if (shard_connection_capacities[shard_id] > std::numeric_limits<uint16>::max())
-        {
-            Release();
-            return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Shard connection capacity exceeds ConnectionHandle slot range.");
-        }
-    }
-
-    shards.reserve(shard_count);
-    for (uint16 shard_id = 0; shard_id < shard_count; ++shard_id)
-    {
-        NetworkShard* shard = new NetworkShard(config.io_uring,
-                                              shard_args_pool_capacities[shard_id],
-                                              shard_framing_pool_capacities[shard_id],
-                                              shard_send_pool_capacities[shard_id],
-                                              shard_connection_capacities[shard_id],
-                                              shard_pending_send_capacities[shard_id]);
-        if (shard->event_fd < 0)
-        {
-            delete shard;
-            Release();
-            return Status<void>::Error(ErrorCode::InitializationFailed, "[NetworkManager] Failed to create eventfd.");
-        }
-
-        Status<void> status = shard->Initialize(config.io_uring, shard_id);
+        auto endpoint = std::make_unique<Endpoint>();
+        Status<void> status = endpoint->InitializeServer(*network_core, server, network_core->config.servers[i]);
         if (status.IsFailed())
         {
-            delete shard;
             Release();
             return status;
         }
 
-        shard->cpu_id = shard_cpu_ids[shard_id];
-        shard->owner = this;
-        shard->wake_poll_args.complete = &NetworkManager::OnWakeCqe;
-        shard->wake_poll_args.user_data = shard;
-
-        for (const IOBufferConfig& io_buf_cfg : config.io_buffers)
-        {
-            status = shard->CreateBuffer(io_buf_cfg);
-            if (status.IsFailed())
-            {
-                delete shard;
-                Release();
-                return status;
-            }
-        }
-
-        shards.push_back(shard);
+        server.endpoint = endpoint.get();
+        network_core->endpoints.push_back(std::move(endpoint));
     }
 
-    shard_endpoints.resize(shard_count);
-    endpoints.assign(endpoint_count, nullptr);
-    for (const ServerConfig& server_cfg : config.servers)
+    network_core->clients.resize(network_core->config.clients.size());
+    for (size_t i = 0; i < network_core->config.clients.size(); ++i)
     {
-        const size_t endpoint_id = static_cast<size_t>(server_cfg.id);
-        if (endpoint_id >= endpoint_count)
+        Client& client = network_core->clients[i];
+        client.endpoint = nullptr;
+
+        auto endpoint = std::make_unique<Endpoint>();
+        Status<void> status = endpoint->InitializeClient(*network_core, client, network_core->config.clients[i]);
+        if (status.IsFailed())
         {
             Release();
-            return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Endpoint id must be contiguous in [0, endpoint_count).");
+            return status;
         }
 
-        if (endpoints[endpoint_id] != nullptr)
-        {
-            Release();
-            return Status<void>::Error(ErrorCode::AlreadyExists, "[NetworkManager] Duplicate endpoint id across servers/clients.");
-        }
-
-        const size_t min_send_buffer_size = BufferMetadata::SEND_OFFSET + sizeof(BufferMetadata);
-        if (server_cfg.send_buffer_size != MAX_BUFFER_SIZE ||
-            server_cfg.send_buffer_size < min_send_buffer_size ||
-            server_cfg.send_buffer_pool_capacity == 0 ||
-            server_cfg.max_pending_send_buffers_per_connection == 0)
-        {
-            Release();
-            return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server send buffer settings are invalid.");
-        }
-
-        for (uint16 shard_id : server_cfg.shard_ids)
-        {
-            NetworkShard* shard = shards[shard_id];
-            if (shard->io_buffers[server_cfg.io_buf_gid] == nullptr)
-            {
-                Release();
-                return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Server references unknown recv group.");
-            }
-        }
-
-        Endpoint* endpoint = nullptr;
-        switch (server_cfg.protocol)
-        {
-            case TransportProtocol::Tcp:
-            {
-                List<NetworkShard*> bound_shards;
-                bound_shards.reserve(server_cfg.shard_ids.size());
-                for (uint16 shard_id : server_cfg.shard_ids)
-                {
-                    bound_shards.push_back(shards[shard_id]);
-                }
-
-                endpoint = new TcpServer(server_cfg.id, server_cfg, shard_count, bound_shards);
-                break;
-            }
-            default:
-            {
-                Release();
-                return Status<void>::Error(ErrorCode::Unsupported, "[NetworkManager] Unsupported transport protocol for server.");
-            }
-        }
-
-        endpoints[endpoint_id] = endpoint;
-#if defined(DEBUG)
-        endpoint->BindOwnerThread();
-#endif
-        for (uint16 shard_id : server_cfg.shard_ids)
-        {
-            shard_endpoints[shard_id].push_back(endpoint);
-        }
+        client.endpoint = endpoint.get();
+        network_core->endpoints.push_back(std::move(endpoint));
     }
 
-    for (size_t endpoint_id = 0; endpoint_id < endpoint_count; ++endpoint_id)
-    {
-        if (endpoints[endpoint_id] == nullptr)
-        {
-            Release();
-            return Status<void>::Error(ErrorCode::ConfigurationError, "[NetworkManager] Endpoint ids must be contiguous and shared between servers and clients.");
-        }
-    }
-
-    cfg = config;
+    network_core->manager_state = ManagerState::Configured;
     return Status<void>::Success();
 }
 
 Status<void> NetworkManager::Start()
 {
-    HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(*this, "[NetworkManager] Start must be called from the owner thread.");
-    assert(!shards.empty() && "[NetworkManager] Shards should have been initialized during configuration.");
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    BindOwnerThread();
 
-    auto rollback_started_endpoints = [this](size_t started_count)
+    Status<void> owner_status = CheckOwnerThread("[NetworkManager] Start must be called from the owner thread.");
+    if (owner_status.IsFailed())
     {
-        while (started_count > 0)
-        {
-            Endpoint* started_endpoint = endpoints[--started_count];
-            Status<void> stop_status = started_endpoint->Stop();
-            if (stop_status.IsFailed())
-            {
-                Logging::Warning("[NetworkManager] Failed to rollback endpoint %d. %s", started_endpoint->id, stop_status.Message());
-            }
-        }
-    };
-
-    for (NetworkShard* shard : shards)
-    {
-        Status<void> status = shard->AllocateSharedResources();
-        if (status.IsFailed())
-        {
-            return status;
-        }
+        return owner_status;
     }
 
-    size_t started_count = 0;
-    for (; started_count < endpoints.size(); ++started_count)
+    if (network_core->is_dispatching_callbacks)
     {
-        Endpoint* endpoint = endpoints[started_count];
-        assert(endpoint != nullptr && "[NetworkManager] Endpoint should have been created during configuration.");
-        Status<void> status = endpoint->Start();
-        if (status.IsFailed())
-        {
-            rollback_started_endpoints(started_count);
-            return status;
-        }
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Start is not allowed during callback dispatch.");
     }
 
-    for (NetworkShard* shard : shards)
+    if (network_core->manager_state == ManagerState::Unconfigured)
     {
-        Status<void> status = shard->SubmitWakePoll();
-        if (status.IsFailed())
-        {
-            rollback_started_endpoints(started_count);
-            return status;
-        }
+        return NetworkError(NetworkStatus::NotReady, "[NetworkManager] Start requires configured endpoints.");
     }
 
-    for (NetworkShard* shard : shards)
+    if (network_core->manager_state != ManagerState::Configured)
     {
-        if (io_uring_submit(&shard->ring) < 0)
-        {
-            rollback_started_endpoints(started_count);
-            return Status<void>::Error(ErrorCode::IOError, "[NetworkManager] Failed to submit initial io_uring SQEs.");
-        }
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Start is only valid while configured.");
     }
 
-    terminal_error_code.store(0, std::memory_order_release);
-    running.store(true, std::memory_order_release);
-    for (NetworkShard* shard : shards)
+    Status<void> start_status = network_core->Start();
+    if (start_status.IsFailed())
     {
-        shard->state.store(NetworkShard::State::Running, std::memory_order_release);
-        shard->thread = new Thread(&NetworkManager::RunShardLoop, this, std::ref(*shard));
+        return start_status;
     }
 
+    network_core->manager_state = ManagerState::Running;
     return Status<void>::Success();
 }
 
-void NetworkManager::RunShardLoop(NetworkShard& shard)
+Status<void> NetworkManager::Stop()
 {
-    if (CpuUtils::PinThread(shard.cpu_id).IsFailed())
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    BindOwnerThread();
+
+    Status<void> owner_status = CheckOwnerThread("[NetworkManager] Stop must be called from the owner thread.");
+    if (owner_status.IsFailed())
     {
-        Logging::Warning("[NetworkManager] Failed to pin network shard thread to CPU %d.", shard.cpu_id);
+        return owner_status;
     }
 
-    io_uring* ring = &shard.ring;
-    while (running.load(std::memory_order_acquire))
+    if (network_core->is_dispatching_callbacks)
     {
-        io_uring_cqe* cqe = nullptr;
-        const int32 res = io_uring_wait_cqe(ring, &cqe);
-        if (res < 0)
-        {
-            OnCqeError(-res);
-            continue;
-        }
-
-        uint32 consumed_count = 0;
-        uint32 head = 0;
-        io_uring_for_each_cqe(ring, head, cqe)
-        {
-            ++consumed_count;
-            CompletionArgs* args = static_cast<CompletionArgs*>(io_uring_cqe_get_data(cqe));
-            if (args == nullptr || args->complete == nullptr)
-            {
-                OnCqeError(0);
-                break;
-            }
-
-            args->complete(cqe->res, cqe->flags, args);
-            if (!running.load(std::memory_order_acquire))
-            {
-                break;
-            }
-        }
-
-        shard.FlushBuffers();
-        shard.AdvanceCqeRing(consumed_count);
-        if (io_uring_sq_ready(ring) > 0)
-        {
-            io_uring_submit(ring);
-        }
-    }
-}
-
-bool NetworkManager::HandleWakeCqe(NetworkShard& shard, uint32 flags)
-{
-    shard.ClearWakeEvent();
-    while (shard.ConsumePendingCommands() > 0)
-    {
-        for (Endpoint* endpoint : shard_endpoints[shard.id])
-        {
-            endpoint->HandleShardWake(shard.id);
-        }
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Stop is not allowed during callback dispatch.");
     }
 
-    if ((flags & IORING_CQE_F_MORE) == 0 && running.load(std::memory_order_acquire))
+    if (network_core->manager_state == ManagerState::Unconfigured || network_core->manager_state == ManagerState::Configured)
     {
-        Status<void> status = shard.SubmitWakePoll();
-        if (status.IsFailed())
-        {
-            Logging::Error("[NetworkManager] Failed to resubmit shard wake poll. %s", status.Message());
-            terminal_error_code.store(static_cast<int32>(ErrorCode::IOError), std::memory_order_release);
-            running.store(false, std::memory_order_release);
-            WakeShards();
-            return false;
-        }
-
-        if (io_uring_submit(&shard.ring) < 0)
-        {
-            Logging::Error("[NetworkManager] Failed to submit shard wake poll SQE.");
-            terminal_error_code.store(static_cast<int32>(ErrorCode::IOError), std::memory_order_release);
-            running.store(false, std::memory_order_release);
-            WakeShards();
-            return false;
-        }
+        return Status<void>::Success();
     }
 
-    return true;
-}
-
-void NetworkManager::Stop()
-{
-    if (shards.empty() && endpoints.empty())
+    if (network_core->manager_state != ManagerState::Running)
     {
-        return;
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Stop is only valid while running.");
     }
 
-    HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(*this, "[NetworkManager] Stop must be called from the owner thread.");
-
-    running.store(false, std::memory_order_release);
-    for (NetworkShard* shard : shards)
+    network_core->manager_state = ManagerState::Stopping;
+    network_core->is_dispatching_callbacks = false;
+    network_core->is_dispatching_message_callback = false;
+    Status<void> stop_status = network_core->Stop();
+    if (stop_status.IsFailed())
     {
-        shard->state.store(NetworkShard::State::Stopping, std::memory_order_release);
-    }
-    WakeShards();
-
-    for (NetworkShard* shard : shards)
-    {
-        if (shard->thread != nullptr)
-        {
-            shard->thread->join();
-            delete shard->thread;
-            shard->thread = nullptr;
-        }
-
-        shard->state.store(NetworkShard::State::Stopped, std::memory_order_release);
+        return stop_status;
     }
 
-    for (Endpoint* endpoint : endpoints)
-    {
-        if (endpoint != nullptr)
-        {
-            endpoint->Stop();
-        }
-    }
+    network_core->manager_state = ManagerState::Configured;
+    return Status<void>::Success();
 }
 
 void NetworkManager::Release()
 {
-    Stop();
-
-    for (Endpoint* endpoint : endpoints)
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    if (network_core != nullptr)
     {
-        delete endpoint;
-    }
-    endpoints.clear();
+        if (network_core->owner_thread_id != std::thread::id { } && !IsOwnerThread())
+        {
+            assert(false && "[NetworkManager] Release must be called from the owner thread.");
+            return;
+        }
 
-    for (NetworkShard* shard : shards)
-    {
-        delete shard;
-    }
-    shards.clear();
-    shard_endpoints.clear();
-    shard_cpu_ids.clear();
+        if (network_core->is_dispatching_callbacks)
+        {
+            assert(false && "[NetworkManager] Release is not allowed during callback dispatch.");
+            return;
+        }
 
-    cfg = NetworkConfig { };
-#if defined(DEBUG)
-    owner_thread_id = std::thread::id();
-#endif
-    terminal_error_code.store(0, std::memory_order_release);
+        network_core->is_dispatching_callbacks = false;
+        network_core->is_dispatching_message_callback = false;
+        network_core->CleanupTransport();
+        network_core->config = NetworkConfig { };
+        network_core->servers.clear();
+        network_core->clients.clear();
+        network_core->endpoints.clear();
+        network_core->workers.clear();
+        network_core->delivered_messages.clear();
+        network_core->manager_state = ManagerState::Unconfigured;
+        network_core->owner_thread_id = std::thread::id { };
+    }
 }
 
 Status<void> NetworkManager::Update()
 {
-    HYP_NETWORK_MANAGER_ASSERT_OWNER_THREAD(*this, "[NetworkManager] Update must be called from the owner thread.");
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    BindOwnerThread();
 
-    const int32 error_code = terminal_error_code.load(std::memory_order_acquire);
-    if (error_code != 0)
+    Status<void> owner_status = CheckOwnerThread("[NetworkManager] Update must be called from the owner thread.");
+    if (owner_status.IsFailed())
     {
-        return Status<void>::Error(static_cast<ErrorCode>(error_code), "[NetworkManager] Fatal IO loop failure.");
+        return owner_status;
     }
 
-    for (NetworkShard* shard : shards)
+    if (network_core->is_dispatching_callbacks)
     {
-        shard->DrainReturnedSendBuffers();
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Update is not allowed during callback dispatch.");
     }
 
-    for (Endpoint* endpoint : endpoints)
+    if (network_core->manager_state != ManagerState::Running)
     {
-        assert(endpoint != nullptr && "[NetworkManager] Endpoint should have been created during configuration.");
-        endpoint->Dispatch();
+        return NetworkError(NetworkStatus::NotReady, "[NetworkManager] Update requires a running manager.");
+    }
+
+    network_core->ReleaseDeliveredMessages();
+    network_core->is_dispatching_callbacks = true;
+    Status<void> dispatch_status = network_core->DispatchCallbacks(*this);
+    network_core->is_dispatching_callbacks = false;
+    return dispatch_status;
+}
+
+Server* NetworkManager::GetServer(EndpointId id)
+{
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    if (network_core != nullptr && network_core->owner_thread_id != std::thread::id { } && !IsOwnerThread())
+    {
+        assert(false && "[NetworkManager] GetServer must be called from the owner thread.");
+        return nullptr;
+    }
+
+    return network_core != nullptr ? network_core->FindServer(id) : nullptr;
+}
+
+Client* NetworkManager::GetClient(EndpointId id)
+{
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    if (network_core != nullptr && network_core->owner_thread_id != std::thread::id { } && !IsOwnerThread())
+    {
+        assert(false && "[NetworkManager] GetClient must be called from the owner thread.");
+        return nullptr;
+    }
+
+    return network_core != nullptr ? network_core->FindClient(id) : nullptr;
+}
+
+Status<void> NetworkManager::ValidateConfig(const NetworkConfig& network_config) const
+{
+    if (network_config.backend == BackendType::None)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Backend type is required.");
+    }
+
+    if (network_config.backend == BackendType::IoUring)
+    {
+        return NetworkError(NetworkStatus::Unsupported, "[NetworkManager] io_uring backend is not supported in the first version.");
+    }
+
+    if (network_config.worker_count == 0)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Worker count must be greater than zero.");
+    }
+
+    if (network_config.servers.empty() && network_config.clients.empty())
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] At least one endpoint is required.");
+    }
+
+    if (!network_config.owned_objects.IsComplete())
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Codec registry, allocator, and packet pipeline are required.");
+    }
+
+    Status<void> registry_status = network_config.owned_objects.codec_registry->Validate();
+    if (registry_status.IsFailed())
+    {
+        return registry_status;
+    }
+
+    for (const ServerConfig& server_config : network_config.servers)
+    {
+        Status<void> status = ValidateServerConfig(server_config, network_config);
+        if (status.IsFailed())
+        {
+            return status;
+        }
+    }
+
+    for (const ClientConfig& client_config : network_config.clients)
+    {
+        Status<void> status = ValidateClientConfig(client_config, network_config);
+        if (status.IsFailed())
+        {
+            return status;
+        }
+    }
+
+    for (size_t i = 0; i < network_config.servers.size(); ++i)
+    {
+        for (size_t j = i + 1; j < network_config.servers.size(); ++j)
+        {
+            if (network_config.servers[i].id == network_config.servers[j].id)
+            {
+                return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Server endpoint ids must be unique.");
+            }
+        }
+
+        for (const ClientConfig& client_config : network_config.clients)
+        {
+            if (network_config.servers[i].id == client_config.id)
+            {
+                return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Endpoint ids must be unique across servers and clients.");
+            }
+        }
+    }
+
+    for (size_t i = 0; i < network_config.clients.size(); ++i)
+    {
+        for (size_t j = i + 1; j < network_config.clients.size(); ++j)
+        {
+            if (network_config.clients[i].id == network_config.clients[j].id)
+            {
+                return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Client endpoint ids must be unique.");
+            }
+        }
     }
 
     return Status<void>::Success();
 }
 
-void NetworkManager::OnWakeCqe(int32 res, uint32 flags, CompletionArgs* args)
+Status<void> NetworkManager::ValidateServerConfig(const ServerConfig& server_config, const NetworkConfig& network_config) const
 {
-    (void)res;
-    assert(args != nullptr && "[NetworkManager] Wake CQE args must not be null.");
-    assert(args->user_data != nullptr && "[NetworkManager] Wake CQE shard must be bound.");
-
-    NetworkShard& shard = *static_cast<NetworkShard*>(args->user_data);
-    assert(shard.owner != nullptr && "[NetworkManager] Wake CQE manager owner must be bound.");
-
-    NetworkManager& self = *static_cast<NetworkManager*>(shard.owner);
-    self.HandleWakeCqe(shard, flags);
-}
-
-void NetworkManager::WakeShards()
-{
-    for (NetworkShard* shard : shards)
+    if (server_config.id == INVALID_ENDPOINT_ID)
     {
-        if (shard != nullptr && shard->event_fd >= 0)
-        {
-            eventfd_write(shard->event_fd, 1);
-        }
-    }
-}
-
-void NetworkManager::OnCqeError(int32 err)
-{
-    static const std::unordered_set<int> retriable_errors = { EIO, EAGAIN, ENOMEM, EBUSY };
-
-    if (retriable_errors.contains(err))
-    {
-        Logging::Warning("[NetworkManager] Failed to wait for CQE. Error: %s", strerror(err));
-        usleep(8);
-        return;
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Server endpoint id is required.");
     }
 
-    Logging::Error("[NetworkManager] Failed to wait for CQE. %s", strerror(err));
-    terminal_error_code.store(static_cast<int32>(ErrorCode::IOError), std::memory_order_release);
-    running.store(false, std::memory_order_release);
-    WakeShards();
+    if (server_config.transport != TransportProtocol::Tcp)
+    {
+        return NetworkError(NetworkStatus::Unsupported, "[NetworkManager] Only TCP server endpoints are supported in the first version.");
+    }
+
+    if (server_config.bind.host.empty() || server_config.bind.port == 0)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Server bind address and port are required.");
+    }
+
+    if (server_config.worker_id >= network_config.worker_count)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Server worker id is out of range.");
+    }
+
+    if (server_config.max_connections == 0
+        || server_config.send_queue_capacity_per_connection == 0
+        || server_config.receive_queue_capacity_per_connection == 0
+        || server_config.delivery_queue_capacity == 0
+        || server_config.codec_buffer_capacity == 0)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Server capacities must be greater than zero.");
+    }
+
+    if (server_config.codec_buffer_capacity > MAX_PACKET_PAYLOAD_SIZE)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Server codec buffer capacity exceeds the packet payload limit.");
+    }
+
+    return Status<void>::Success();
 }
 
-#if defined(DEBUG)
+Status<void> NetworkManager::ValidateClientConfig(const ClientConfig& client_config, const NetworkConfig& network_config) const
+{
+    if (client_config.id == INVALID_ENDPOINT_ID)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Client endpoint id is required.");
+    }
+
+    if (client_config.transport != TransportProtocol::Tcp)
+    {
+        return NetworkError(NetworkStatus::Unsupported, "[NetworkManager] Only TCP client endpoints are supported in the first version.");
+    }
+
+    if (client_config.remote.host.empty() || client_config.remote.port == 0)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Client remote address and port are required.");
+    }
+
+    if (client_config.worker_id >= network_config.worker_count)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Client worker id is out of range.");
+    }
+
+    if (client_config.send_queue_capacity == 0
+        || client_config.receive_queue_capacity == 0
+        || client_config.delivery_queue_capacity == 0
+        || client_config.codec_buffer_capacity == 0)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Client capacities must be greater than zero.");
+    }
+
+    if (client_config.codec_buffer_capacity > MAX_PACKET_PAYLOAD_SIZE)
+    {
+        return NetworkError(NetworkStatus::InvalidConfig, "[NetworkManager] Client codec buffer capacity exceeds the packet payload limit.");
+    }
+
+    return Status<void>::Success();
+}
+
+Status<void> NetworkManager::CheckOwnerThread(const char* context) const
+{
+    (void)context;
+
+    if (!IsOwnerThread())
+    {
+        assert(false && "[NetworkManager] Public API must be called from the owner thread.");
+        return NetworkError(NetworkStatus::InvalidState, "[NetworkManager] Public API must be called from the owner thread.");
+    }
+
+    return Status<void>::Success();
+}
+
 void NetworkManager::BindOwnerThread() noexcept
 {
-    assert((owner_thread_id == std::thread::id() || owner_thread_id == std::this_thread::get_id()) && "[NetworkManager] Owner thread is already bound to another thread.");
-    owner_thread_id = std::this_thread::get_id();
+    NetworkCore* network_core = static_cast<NetworkCore*>(core);
+    if (network_core->owner_thread_id == std::thread::id { })
+    {
+        network_core->owner_thread_id = std::this_thread::get_id();
+    }
 }
 
 bool NetworkManager::IsOwnerThread() const noexcept
 {
-    return owner_thread_id == std::this_thread::get_id();
+    const NetworkCore* network_core = static_cast<const NetworkCore*>(core);
+    return network_core->owner_thread_id != std::thread::id { } && network_core->owner_thread_id == std::this_thread::get_id();
 }
 
-void NetworkManager::AssertOwnerThread(const char* context) const noexcept
-{
-    assert(owner_thread_id != std::thread::id() && context);
-    assert(IsOwnerThread() && context);
-}
-#endif
-
-Server* NetworkManager::GetServer(uint8 id) const
-{
-    const size_t endpoint_id = static_cast<size_t>(id);
-    if (endpoint_id >= endpoints.size())
-    {
-        return nullptr;
-    }
-
-    Endpoint* endpoint = endpoints[endpoint_id];
-    if (endpoint == nullptr)
-    {
-        return nullptr;
-    }
-
-    return endpoint->AsServer();
-}
-
-Client* NetworkManager::GetClient(uint8 id) const
-{
-    const size_t endpoint_id = static_cast<size_t>(id);
-    if (endpoint_id >= endpoints.size())
-    {
-        return nullptr;
-    }
-
-    Endpoint* endpoint = endpoints[endpoint_id];
-    if (endpoint == nullptr)
-    {
-        return nullptr;
-    }
-
-    return endpoint->AsClient();
-}
 
 } // namespace Network
 } // namespace Hypnos

@@ -1,416 +1,564 @@
 #pragma once
 
-#include "Network/Connection.hpp"
-#include "Network/Endpoint.hpp"
-#include "Network/NetworkShard.hpp"
-#include <Hypnos/Network/IMessage.hpp>
+#include "Network/PacketFraming.hpp"
 #include <Hypnos/Network/NetworkManager.hpp>
-#include <array>
 #include <cassert>
-#include <sys/mman.h>
+#include <chrono>
+#include <memory>
 #include <thread>
+#include <utility>
+
+#if defined(__linux__)
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 namespace Blanketmen {
 namespace Hypnos {
 namespace Tests {
 
-namespace {
-
-struct CompletionTrace
-{
-    int call_count = 0;
-    int tags[2] = { 0, 0 };
-    int32 results[2] = { 0, 0 };
-    uint32 flags[2] = { 0, 0 };
-};
-
-struct TaggedCompletionArgs : Network::CompletionArgs
-{
-    int tag = 0;
-};
+namespace NetworkTests {
 
 class FakeMessage : public Network::IMessage
 {
 public:
-    enum class Mode : uint8
+    explicit FakeMessage(uint8 codec_id) :
+        codec_id(codec_id)
     {
-        Success,
-        PackFailure,
-        Oversized
-    };
-
-    explicit FakeMessage(Mode mode) : mode(mode) { }
-
-    uint16 Id() const noexcept override { return 7; }
-
-    Status<Network::PacketSize> Pack(byte* buf, Network::PacketSize capacity) const override
-    {
-        if (mode == Mode::PackFailure)
-        {
-            return Status<Network::PacketSize>::Error(ErrorCode::InvalidFormat, "[NetworkTests] Fake pack failure.");
-        }
-
-        if (mode == Mode::Oversized)
-        {
-            return Status<Network::PacketSize>::Success(static_cast<Network::PacketSize>(Network::MAX_PACKET_SIZE + 1));
-        }
-
-        if (capacity < 3)
-        {
-            return Status<Network::PacketSize>::Error(ErrorCode::InvalidArgument, "[NetworkTests] Fake pack capacity is too small.");
-        }
-
-        buf[0] = byte { 11 };
-        buf[1] = byte { 22 };
-        buf[2] = byte { 33 };
-        return Status<Network::PacketSize>::Success(static_cast<Network::PacketSize>(3));
     }
 
-    Status<void> Unpack(const byte* buf, Network::PacketSize len) override
+    uint8 CodecId() const noexcept override
     {
-        (void)buf;
-        (void)len;
-        return Status<void>::Success();
+        return codec_id;
     }
 
 private:
-    Mode mode;
+    uint8 codec_id = 1;
 };
 
-class OwnerThreadProbeEndpoint : public Network::Endpoint
+class FakeAllocator : public Network::IMessageAllocator
 {
 public:
-    OwnerThreadProbeEndpoint() : Endpoint(0) { }
-
-    Status<void> Start() override { return Status<void>::Success(); }
-    Status<void> Stop() override { return Status<void>::Success(); }
-    void Dispatch() override { }
-
-    bool ProbeOwnerThread()
+    Network::IMessage* Acquire(uint8 codec_id) override
     {
-#if defined(DEBUG)
-        return IsOwnerThread();
-#else
-        return true;
-#endif
+        ++acquire_count;
+        return new FakeMessage(codec_id);
+    }
+
+    void Release(Network::IMessage& message) override
+    {
+        ++release_count;
+        delete &message;
+    }
+
+    static inline uint32 acquire_count = 0;
+    static inline uint32 release_count = 0;
+};
+
+class FakeCodec : public Network::ICodec
+{
+public:
+    uint8 Id() const noexcept override
+    {
+        return 1;
+    }
+
+    Status<Network::PacketSize> Encode(Network::IMessage& message, byte* buffer, Network::PacketSize capacity) override
+    {
+        (void)message;
+
+        if (capacity == 0)
+        {
+            return Status<Network::PacketSize>::Error(ErrorCode::ResourceExhausted, "[NetworkTests] Fake codec buffer is full.");
+        }
+
+        buffer[0] = byte { 42 };
+        return Status<Network::PacketSize>::Success(static_cast<Network::PacketSize>(1));
+    }
+
+    Status<Network::IMessage*> Decode(const byte* buffer, Network::PacketSize size, Network::IMessageAllocator& allocator) override
+    {
+        (void)buffer;
+        (void)size;
+        return Status<Network::IMessage*>::Success(allocator.Acquire(Id()));
     }
 };
 
-class SendProbeServer : public Network::Server
+class FakeCodecRegistry : public Network::ICodecRegistry
 {
 public:
-    using Network::Server::Send;
-
-    SendProbeServer() : Server(0, 1) { }
-
-    Status<void> Close(Network::ConnectionHandle conn_handle) override
+    explicit FakeCodecRegistry(bool has_duplicate_codec = false) :
+        has_duplicate_codec(has_duplicate_codec)
     {
-        last_handle = conn_handle;
-        ++close_count;
+    }
+
+    Status<void> Validate() const override
+    {
+        if (has_duplicate_codec)
+        {
+            return Status<void>::Error(Network::ToErrorCode(Network::NetworkStatus::InvalidConfig), "[NetworkTests] Duplicate codec id.");
+        }
         return Status<void>::Success();
     }
 
-    Status<void> Send(Network::ConnectionHandle conn_handle, const Network::EncodedMessage& encoded) override
+    Network::ICodec* Find(uint8 codec_id) const override
     {
-        last_handle = conn_handle;
-        last_encoded = encoded;
-        ++send_count;
-        return Status<void>::Success();
+        return codec_id == codec.Id() ? const_cast<FakeCodec*>(&codec) : nullptr;
     }
 
-    Network::ConnectionHandle MakeHandle(Network::Connection& conn) const noexcept
-    {
-        return CreateHandle(conn);
-    }
-
-    Network::Connection* Resolve(Network::ConnectionHandle conn_handle) const noexcept
-    {
-        return ResolveHandle(conn_handle);
-    }
-
-    Network::ConnectionHandle last_handle;
-    Network::EncodedMessage last_encoded;
-    uint32 close_count = 0;
-    uint32 send_count = 0;
+private:
+    bool has_duplicate_codec = false;
+    FakeCodec codec;
 };
 
-void RecordPrimaryCompletion(int32 res, uint32 flags, Network::CompletionArgs* args)
+class FakePipeline : public Network::IPacketPipeline
 {
-    CompletionTrace& trace = *static_cast<CompletionTrace*>(args->user_data);
-    TaggedCompletionArgs& tagged_args = *static_cast<TaggedCompletionArgs*>(args);
-    const int call_index = trace.call_count++;
-    trace.tags[call_index] = 100 + tagged_args.tag;
-    trace.results[call_index] = res;
-    trace.flags[call_index] = flags;
-}
-
-void RecordSecondaryCompletion(int32 res, uint32 flags, Network::CompletionArgs* args)
-{
-    CompletionTrace& trace = *static_cast<CompletionTrace*>(args->user_data);
-    TaggedCompletionArgs& tagged_args = *static_cast<TaggedCompletionArgs*>(args);
-    const int call_index = trace.call_count++;
-    trace.tags[call_index] = 200 + tagged_args.tag;
-    trace.results[call_index] = res;
-    trace.flags[call_index] = flags;
-}
-
-void TokenizedCompletionDispatchPasses()
-{
-    CompletionTrace trace { };
-
-    TaggedCompletionArgs first_args { };
-    first_args.complete = &RecordPrimaryCompletion;
-    first_args.user_data = &trace;
-    first_args.tag = 1;
-
-    TaggedCompletionArgs second_args { };
-    second_args.complete = &RecordSecondaryCompletion;
-    second_args.user_data = &trace;
-    second_args.tag = 2;
-
-    assert(first_args.complete != nullptr && "[NetworkTests] First completion callback must be bound.");
-    assert(second_args.complete != nullptr && "[NetworkTests] Second completion callback must be bound.");
-    first_args.complete(11, 0, &first_args);
-    second_args.complete(22, IORING_CQE_F_MORE, &second_args);
-
-    assert(trace.call_count == 2 && "[NetworkTests] Completion callbacks should fire in dispatch order.");
-    assert(trace.tags[0] == 101 && trace.results[0] == 11 && trace.flags[0] == 0 && "[NetworkTests] First completion callback should preserve its bound token.");
-    assert(trace.tags[1] == 202 && trace.results[1] == 22 && trace.flags[1] == IORING_CQE_F_MORE && "[NetworkTests] Second completion callback should preserve its bound token.");
-}
-
-void ConnectionHandlePasses()
-{
-    SendProbeServer server { };
-    Network::Connection conn { };
-    conn.slot = 7;
-    conn.generation.store(5, std::memory_order_release);
-
-    const Network::ConnectionHandle conn_handle = server.MakeHandle(conn);
-    const Network::ConnectionHandle same_conn_handle = server.MakeHandle(conn);
-    assert(conn_handle.IsValid() && "[NetworkTests] Connection handle should remain valid for active transport peers.");
-    assert(conn_handle == same_conn_handle && "[NetworkTests] Connection handles should preserve peer identity for equality checks.");
-    assert(server.Resolve(conn_handle) == &conn && "[NetworkTests] Connection handles should resolve to their live runtime connection.");
-
-    conn.generation.fetch_add(1, std::memory_order_acq_rel);
-    assert(server.Resolve(conn_handle) == nullptr && "[NetworkTests] Stale connection handles should not resolve after generation changes.");
-
-    const Network::ConnectionEvent evt { Network::ConnectionEvent::Type::Connected, conn_handle };
-    assert(evt.handle == conn_handle && "[NetworkTests] Connection events should continue to carry the transport peer handle.");
-}
-
-void EncodedMessagePasses()
-{
-    SendProbeServer server { };
-    Network::EncodedMessage encoded;
-
-    FakeMessage message(FakeMessage::Mode::Success);
-    Status<void> status = server.Encode(message, encoded);
-    assert(!status.IsFailed() && "[NetworkTests] Server should encode valid messages.");
-    assert(encoded.IsValid() && encoded.size == 3 && "[NetworkTests] Encoded messages should expose their packed size.");
-    assert(encoded.buffer[0] == byte { 11 } && encoded.buffer[1] == byte { 22 } && encoded.buffer[2] == byte { 33 } && "[NetworkTests] Encoded messages should preserve packed bytes.");
-
-    FakeMessage failing_message(FakeMessage::Mode::PackFailure);
-    Status<void> failing_status = server.Encode(failing_message, encoded);
-    assert(failing_status.IsFailed() && encoded.size == 0 && "[NetworkTests] Server should preserve pack failures as encode failures.");
-
-    FakeMessage oversized_message(FakeMessage::Mode::Oversized);
-    Status<void> oversized_status = server.Encode(oversized_message, encoded);
-    assert(oversized_status.IsFailed() && encoded.size == 0 && "[NetworkTests] Server should reject oversized encoded messages.");
-}
-
-void SendMessageWrapperPasses()
-{
-    SendProbeServer server { };
-    FakeMessage message(FakeMessage::Mode::Success);
-    const Network::ConnectionHandle conn_handle { };
-
-    Status<void> status = server.Send(conn_handle, message);
-    assert(!status.IsFailed() && "[NetworkTests] Server message send wrapper should encode and forward to encoded send.");
-    assert(server.send_count == 1 && "[NetworkTests] Server message send wrapper should call encoded send once.");
-    assert(server.last_encoded.IsValid() && server.last_encoded.size == 3 && "[NetworkTests] Server message send wrapper should forward encoded bytes.");
-}
-
-void CloseSingleTargetPasses()
-{
-    SendProbeServer server { };
-    const Network::ConnectionHandle conn_handle { };
-
-    Status<void> status = server.Close(conn_handle);
-    assert(!status.IsFailed() && "[NetworkTests] Server close should accept a single target handle.");
-    assert(server.close_count == 1 && server.last_handle == conn_handle && "[NetworkTests] Server close should forward the single target handle.");
-}
-
-void SharedConnectionPoolPasses()
-{
-    Network::IOUringConfig io_uring_cfg { };
-    io_uring_cfg.sq_entries = 64;
-    io_uring_cfg.cq_entries = 64;
-    io_uring_cfg.flags = 0;
-
-    Network::NetworkShard shard(io_uring_cfg, 0, 0, 0, 2, 2);
-    Status<void> status = shard.Initialize(io_uring_cfg, 1);
-    assert(!status.IsFailed() && "[NetworkTests] NetworkShard should initialize its shared connection pool.");
-
-    int first_context = 3;
-    int second_context = 4;
-    int third_context = 5;
-
-    Network::Connection* first = shard.AcquireConnection(&first_context, 2);
-    Network::Connection* second = shard.AcquireConnection(&second_context, 2);
-    assert(first != nullptr && second != nullptr && first != second && "[NetworkTests] Shared connection pool should issue distinct slots.");
-    assert(first->endpoint_context == &first_context && second->endpoint_context == &second_context && "[NetworkTests] Shared slots should preserve endpoint ownership context.");
-
-    assert(shard.AcquireConnection(&third_context, 2) == nullptr && "[NetworkTests] Shared connection pool should report exhaustion.");
-
-    first->state.store(Network::Connection::State::Closing, std::memory_order_release);
-    assert(shard.ReleaseConnection(*first) && "[NetworkTests] Closing connections should return to the shared free list.");
-    Network::Connection* reused = shard.AcquireConnection(&third_context, 2);
-    assert(reused == first && reused->endpoint_context == &third_context && "[NetworkTests] Released shared slots should be reusable by another endpoint context.");
-}
-
-void SendBufferLayoutPasses()
-{
-    static_assert(Network::MAX_PACKET_SIZE == 1476, "[NetworkTests] Send payload capacity should stay aligned to the fixed MTU.");
-    static_assert(Network::MAX_BUFFER_SIZE == 2048, "[NetworkTests] Send buffer capacity should stay fixed at 2048 bytes.");
-
-    constexpr size_t metadata_offset = Network::BufferMetadata::SEND_OFFSET;
-    constexpr size_t metadata_size = sizeof(Network::BufferMetadata);
-
-    assert(metadata_offset >= Network::MAX_PACKET_SIZE && "[NetworkTests] Send metadata must begin after the payload region.");
-    assert(metadata_offset + metadata_size <= Network::MAX_BUFFER_SIZE && "[NetworkTests] Send metadata must fit in the reserved tail space.");
-
-    std::array<byte, Network::MAX_BUFFER_SIZE> buffer { };
-    byte* const metadata_ptr = buffer.data() + metadata_offset;
-    assert(metadata_ptr >= buffer.data() + Network::MAX_PACKET_SIZE && "[NetworkTests] Metadata pointer should remain outside the payload bytes.");
-    assert(metadata_ptr + metadata_size <= buffer.data() + buffer.size() && "[NetworkTests] Metadata pointer should remain inside the backing buffer.");
-}
-
-void PendingBufferRingPasses()
-{
-    Network::PendingBufferRing ring { };
-    byte* storage[2] = { nullptr, nullptr };
-    byte first[4] = { };
-    byte second[4] = { };
-    byte third[4] = { };
-
-    ring.Bind(storage, 2);
-    assert(ring.IsEmpty() && "[NetworkTests] Pending buffer ring should start empty.");
-    assert(!ring.IsFull() && "[NetworkTests] Pending buffer ring should not start full.");
-
-    assert(ring.Push(first) && "[NetworkTests] Pending buffer ring should accept the first buffer.");
-    assert(ring.Push(second) && "[NetworkTests] Pending buffer ring should accept the second buffer up to capacity.");
-    assert(ring.IsFull() && "[NetworkTests] Pending buffer ring should report full once capacity is reached.");
-    assert(!ring.Push(nullptr) && "[NetworkTests] Pending buffer ring should reject null buffers.");
-    assert(!ring.Push(third) && "[NetworkTests] Pending buffer ring should reject pushes beyond capacity.");
-
-    byte* popped = nullptr;
-    assert(ring.Pop(popped) && popped == first && "[NetworkTests] Pending buffer ring should pop buffers in FIFO order.");
-    assert(ring.Pop(popped) && popped == second && "[NetworkTests] Pending buffer ring should preserve the second buffered pointer.");
-    assert(!ring.Pop(popped) && "[NetworkTests] Pending buffer ring should report empty after draining.");
-    assert(ring.IsEmpty() && "[NetworkTests] Pending buffer ring should be empty after all buffered pointers are popped.");
-}
-
-void EndpointOwnerThreadContractPasses()
-{
-#if defined(DEBUG)
-    OwnerThreadProbeEndpoint endpoint { };
-    endpoint.BindOwnerThread();
-    assert(endpoint.ProbeOwnerThread() && "[NetworkTests] Endpoint should accept its bound owner thread.");
-
-    bool second_thread_result = true;
-    std::thread second_thread([&endpoint, &second_thread_result]()
+public:
+    Status<Network::PacketSize> Encode(Network::ICodec& codec, Network::IMessage& message, byte* buffer, Network::PacketSize capacity) override
     {
-        second_thread_result = endpoint.ProbeOwnerThread();
-    });
-    second_thread.join();
-
-    assert(!second_thread_result && "[NetworkTests] Endpoint owner-thread contract should reject calls from a second thread.");
-#endif
-}
-
-Network::NetworkConfig MakeNetworkConfig(std::initializer_list<std::initializer_list<uint16>> server_shard_bindings)
-{
-    Network::NetworkConfig cfg { };
-    cfg.shard_count = 2;
-    cfg.io_uring.sq_entries = 64;
-    cfg.io_uring.cq_entries = 64;
-    cfg.io_uring.flags = 0;
-
-    Network::IOBufferConfig io_buffer_cfg { };
-    io_buffer_cfg.id = 0;
-    io_buffer_cfg.nentries = 8;
-    io_buffer_cfg.buffer_size = Network::MAX_BUFFER_SIZE;
-    io_buffer_cfg.mmap_flags = 0;
-    cfg.io_buffers.push_back(io_buffer_cfg);
-
-    uint8 server_id = 0;
-    for (const std::initializer_list<uint16>& shard_ids : server_shard_bindings)
-    {
-        Network::ServerConfig server_cfg { };
-        server_cfg.id = server_id++;
-        server_cfg.protocol = Network::TransportProtocol::Tcp;
-        server_cfg.shard_ids.assign(shard_ids.begin(), shard_ids.end());
-        server_cfg.bind_ip = in6addr_any;
-        server_cfg.bind_port = static_cast<uint16>(40000 + server_cfg.id);
-        server_cfg.io_buf_gid = 0;
-        server_cfg.max_conns = 8;
-        cfg.servers.push_back(server_cfg);
+        return codec.Encode(message, buffer, capacity);
     }
 
-    return cfg;
+    Status<Network::IMessage*> Decode(Network::ICodec& codec, const byte* buffer, Network::PacketSize size, Network::IMessageAllocator& allocator) override
+    {
+        return codec.Decode(buffer, size, allocator);
+    }
+};
+
+inline bool FailedWith(const Status<void>& status, Network::NetworkStatus network_status)
+{
+    return status.IsFailed() && status.ErrorCode() == static_cast<int32>(Network::ToErrorCode(network_status));
 }
 
-void MissingShardBindingsFail()
+inline Network::ServerConfig MakeServerConfig(Network::EndpointId id)
 {
-    Network::NetworkConfig cfg = MakeNetworkConfig({ { } });
-    Network::NetworkManager manager { };
-    Status<void> status = manager.Configure(cfg);
-    assert(status.IsFailed() && "[NetworkTests] Configure should reject endpoints without shard bindings.");
+    Network::ServerConfig config { };
+    config.id = id;
+    config.transport = Network::TransportProtocol::Tcp;
+    config.bind.host = "127.0.0.1";
+    config.bind.port = static_cast<uint16>(27000 + id);
+    config.worker_id = 0;
+    config.max_connections = 8;
+    config.send_queue_capacity_per_connection = 4;
+    config.receive_queue_capacity_per_connection = 4;
+    config.delivery_queue_capacity = 8;
+    config.codec_buffer_capacity = 1024;
+    return config;
 }
 
-void DuplicateShardBindingsFail()
+inline Network::ClientConfig MakeClientConfig(Network::EndpointId id)
 {
-    Network::NetworkConfig cfg = MakeNetworkConfig({ { 0, 0 } });
-    Network::NetworkManager manager { };
-    Status<void> status = manager.Configure(cfg);
-    assert(status.IsFailed() && "[NetworkTests] Configure should reject duplicate shard bindings.");
+    Network::ClientConfig config { };
+    config.id = id;
+    config.transport = Network::TransportProtocol::Tcp;
+    config.remote.host = "127.0.0.1";
+    config.remote.port = static_cast<uint16>(28000 + id);
+    config.worker_id = 0;
+    config.send_queue_capacity = 4;
+    config.receive_queue_capacity = 4;
+    config.delivery_queue_capacity = 8;
+    config.codec_buffer_capacity = 1024;
+    return config;
 }
 
-void OutOfRangeShardBindingsFail()
+inline Network::NetworkConfig MakeConfig(bool has_duplicate_codec = false)
 {
-    Network::NetworkConfig cfg = MakeNetworkConfig({ { 2 } });
-    Network::NetworkManager manager { };
-    Status<void> status = manager.Configure(cfg);
-    assert(status.IsFailed() && "[NetworkTests] Configure should reject out-of-range shard bindings.");
+    Network::NetworkConfig config { };
+    config.backend = Network::BackendType::Epoll;
+    config.worker_count = 1;
+    config.owned_objects.codec_registry = std::make_unique<FakeCodecRegistry>(has_duplicate_codec);
+    config.owned_objects.message_allocator = std::make_unique<FakeAllocator>();
+    config.owned_objects.packet_pipeline = std::make_unique<FakePipeline>();
+    config.servers.push_back(MakeServerConfig(1));
+    return config;
 }
 
-void OverlappingShardBindingsPass()
+inline Network::NetworkConfig MakeLoopbackConfig(uint16 port)
 {
-    Network::NetworkConfig cfg = MakeNetworkConfig({ { 0 }, { 0, 1 } });
+    Network::NetworkConfig config { };
+    config.backend = Network::BackendType::Epoll;
+    config.worker_count = 1;
+    config.owned_objects.codec_registry = std::make_unique<FakeCodecRegistry>();
+    config.owned_objects.message_allocator = std::make_unique<FakeAllocator>();
+    config.owned_objects.packet_pipeline = std::make_unique<FakePipeline>();
+    config.servers.push_back(MakeServerConfig(1));
+    config.clients.push_back(MakeClientConfig(2));
+    config.servers[0].bind.port = port;
+    config.clients[0].remote.port = port;
+    return config;
+}
+
+inline bool Pump(Network::NetworkManager& manager, bool (*done)(), uint32 iterations = 200)
+{
+    for (uint32 i = 0; i < iterations; ++i)
+    {
+        Status<void> update_status = manager.Update();
+        assert(!update_status.IsFailed());
+        if (done())
+        {
+            return true;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return done();
+}
+
+inline void ConfigValidationPasses()
+{
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.worker_count = 0;
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.backend = Network::BackendType::IoUring;
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::Unsupported));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.servers.push_back(MakeServerConfig(1));
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig(true);
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.servers[0].worker_id = 1;
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.servers[0].delivery_queue_capacity = 0;
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+}
+
+inline void LifecyclePasses()
+{
     Network::NetworkManager manager { };
-    Status<void> status = manager.Configure(cfg);
-    assert(!status.IsFailed() && "[NetworkTests] Configure should allow endpoints to overlap on the same shard.");
-    assert(manager.GetServer(0) != nullptr && manager.GetServer(1) != nullptr && "[NetworkTests] Overlapping shard bindings should still create all configured servers.");
+    assert(FailedWith(manager.Start(), Network::NetworkStatus::NotReady));
+
+    Network::NetworkConfig config = MakeConfig();
+    Status<void> configure_status = manager.Configure(std::move(config));
+    assert(!configure_status.IsFailed());
+    assert(manager.State() == Network::ManagerState::Configured);
+
+    assert(FailedWith(manager.Update(), Network::NetworkStatus::NotReady));
+    assert(FailedWith(manager.Configure(MakeConfig()), Network::NetworkStatus::InvalidState));
+
+    Network::Server* server = manager.GetServer(1);
+    assert(server != nullptr);
+    assert(server->State() == Network::ServerState::Stopped);
+    assert(!server->Register(Network::MessageHandler { }).IsFailed());
+
+    Status<void> start_status = manager.Start();
+    assert(!start_status.IsFailed());
+    assert(manager.State() == Network::ManagerState::Running);
+    assert(server->State() == Network::ServerState::Listening);
+
+    Status<void> update_status = manager.Update();
+    assert(!update_status.IsFailed());
+
+    Status<void> stop_status = manager.Stop();
+    assert(!stop_status.IsFailed());
+    assert(manager.State() == Network::ManagerState::Configured);
+    assert(server->State() == Network::ServerState::Stopped);
+
     manager.Release();
+    assert(manager.State() == Network::ManagerState::Unconfigured);
+    assert(manager.GetServer(1) == nullptr);
 }
 
-} // namespace
-
-void NetworkPasses()
+inline void EndpointLookupPasses()
 {
-    TokenizedCompletionDispatchPasses();
-    ConnectionHandlePasses();
-    EncodedMessagePasses();
-    SendMessageWrapperPasses();
-    CloseSingleTargetPasses();
-    SharedConnectionPoolPasses();
-    SendBufferLayoutPasses();
-    PendingBufferRingPasses();
-    EndpointOwnerThreadContractPasses();
-    MissingShardBindingsFail();
-    DuplicateShardBindingsFail();
-    OutOfRangeShardBindingsFail();
-    OverlappingShardBindingsPass();
+    Network::NetworkConfig config = MakeConfig();
+    config.clients.push_back(MakeClientConfig(2));
+
+    Network::NetworkManager manager { };
+    Status<void> status = manager.Configure(std::move(config));
+    assert(!status.IsFailed());
+
+    assert(manager.GetServer(1) != nullptr);
+    assert(manager.GetClient(2) != nullptr);
+    assert(manager.GetServer(2) == nullptr);
+    assert(manager.GetClient(1) == nullptr);
+    assert(manager.GetServer(99) == nullptr);
+}
+
+inline void EndpointApiGuardPasses()
+{
+    Network::NetworkManager manager { };
+    Network::NetworkConfig config = MakeConfig();
+    Status<void> configure_status = manager.Configure(std::move(config));
+    assert(!configure_status.IsFailed());
+
+    Network::Server* server = manager.GetServer(1);
+    assert(server != nullptr);
+
+    FakeMessage message { 1 };
+    Network::ConnectionHandle invalid_handle { };
+    assert(FailedWith(server->Send(invalid_handle, message), Network::NetworkStatus::NotReady));
+
+    Status<void> start_status = manager.Start();
+    assert(!start_status.IsFailed());
+    assert(FailedWith(server->Send(invalid_handle, message), Network::NetworkStatus::InvalidHandle));
+    assert(FailedWith(server->Close(invalid_handle), Network::NetworkStatus::InvalidHandle));
+}
+
+inline void PacketFramingPasses()
+{
+    byte buffer[Network::PACKET_HEADER_SIZE] { };
+    Status<void> write_status = Network::WritePacketHeader(0x1234, 7, buffer, sizeof(buffer));
+    assert(!write_status.IsFailed());
+    assert(static_cast<uint8>(buffer[0]) == 0x12);
+    assert(static_cast<uint8>(buffer[1]) == 0x34);
+    assert(static_cast<uint8>(buffer[2]) == 7);
+    assert(static_cast<uint8>(buffer[3]) == 0);
+
+    Status<Network::PacketHeader> read_status = Network::ReadPacketHeader(buffer, sizeof(buffer));
+    assert(!read_status.IsFailed());
+    assert(read_status.Value().payload_size == 0x1234);
+    assert(read_status.Value().codec_id == 7);
+    assert(read_status.Value().flags == 0);
+}
+
+#if defined(__linux__)
+inline bool server_connected = false;
+inline bool client_connected = false;
+inline bool server_received = false;
+inline bool client_received = false;
+inline Network::ConnectionHandle server_connection;
+
+inline void ResetLoopbackTrace()
+{
+    server_connected = false;
+    client_connected = false;
+    server_received = false;
+    client_received = false;
+    server_connection = Network::ConnectionHandle { };
+    FakeAllocator::acquire_count = 0;
+    FakeAllocator::release_count = 0;
+}
+
+inline bool BothConnected()
+{
+    return server_connected && client_connected;
+}
+
+inline bool ServerReceived()
+{
+    return server_received;
+}
+
+inline bool ClientReceived()
+{
+    return client_received;
+}
+
+inline void OnServerConnection(const Network::ConnectionEvent& event)
+{
+    if (event.type == Network::ConnectionEventType::Connected)
+    {
+        server_connected = true;
+        server_connection = event.connection;
+    }
+}
+
+inline void OnClientConnection(const Network::ConnectionEvent& event)
+{
+    if (event.type == Network::ConnectionEventType::Connected)
+    {
+        client_connected = true;
+    }
+}
+
+inline void OnServerMessage(const Network::MessageEvent& event)
+{
+    (void)event;
+    server_received = true;
+}
+
+inline void OnClientMessage(const Network::MessageEvent& event)
+{
+    (void)event;
+    client_received = true;
+}
+
+inline void TcpLoopbackPasses()
+{
+    ResetLoopbackTrace();
+
+    Network::NetworkManager manager { };
+    Network::NetworkConfig config = MakeLoopbackConfig(39101);
+    Status<void> configure_status = manager.Configure(std::move(config));
+    assert(!configure_status.IsFailed());
+
+    Network::Server* server = manager.GetServer(1);
+    Network::Client* client = manager.GetClient(2);
+    assert(server != nullptr);
+    assert(client != nullptr);
+
+    assert(!server->Register(Network::ConnectionEventHandler::Bind<&OnServerConnection>()).IsFailed());
+    assert(!server->Register(Network::MessageHandler::Bind<&OnServerMessage>()).IsFailed());
+    assert(!client->Register(Network::ConnectionEventHandler::Bind<&OnClientConnection>()).IsFailed());
+    assert(!client->Register(Network::MessageHandler::Bind<&OnClientMessage>()).IsFailed());
+
+    Status<void> start_status = manager.Start();
+    assert(!start_status.IsFailed());
+
+    Status<void> connect_status = client->Connect();
+    assert(!connect_status.IsFailed());
+    assert(Pump(manager, &BothConnected));
+
+    FakeMessage client_message { 1 };
+    Status<void> client_send_status = client->Send(client_message);
+    assert(!client_send_status.IsFailed());
+    assert(Pump(manager, &ServerReceived));
+    assert(FakeAllocator::acquire_count == 1);
+    assert(FakeAllocator::release_count == 0);
+
+    Status<void> release_update_status = manager.Update();
+    assert(!release_update_status.IsFailed());
+    assert(FakeAllocator::release_count == 1);
+
+    FakeMessage server_message { 1 };
+    Status<void> server_send_status = server->Send(server_connection, server_message);
+    assert(!server_send_status.IsFailed());
+    assert(Pump(manager, &ClientReceived));
+
+    Status<void> stop_status = manager.Stop();
+    assert(!stop_status.IsFailed());
+}
+
+inline bool server_codec_error = false;
+inline bool server_resource_exhausted = false;
+
+inline bool ServerCodecError()
+{
+    return server_codec_error;
+}
+
+inline void OnServerError(const Network::NetworkErrorEvent& event)
+{
+    if (event.status == Network::NetworkStatus::CodecError)
+    {
+        server_codec_error = true;
+    }
+
+    if (event.status == Network::NetworkStatus::ResourceExhausted)
+    {
+        server_resource_exhausted = true;
+    }
+}
+
+inline void UnsupportedFlagsFailConnectionPasses()
+{
+    server_codec_error = false;
+
+    Network::NetworkManager manager { };
+    Network::NetworkConfig config = MakeConfig();
+    config.servers[0].bind.port = 39102;
+    Status<void> configure_status = manager.Configure(std::move(config));
+    assert(!configure_status.IsFailed());
+
+    Network::Server* server = manager.GetServer(1);
+    assert(server != nullptr);
+    assert(!server->Register(Network::ErrorHandler::Bind<&OnServerError>()).IsFailed());
+
+    Status<void> start_status = manager.Start();
+    assert(!start_status.IsFailed());
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd >= 0);
+
+    sockaddr_in addr { };
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(39102);
+    assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
+    assert(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+
+    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 1 }, byte { 1 } };
+    assert(send(fd, packet, sizeof(packet), 0) == static_cast<ssize_t>(sizeof(packet)));
+    assert(Pump(manager, &ServerCodecError));
+
+    close(fd);
+    Status<void> stop_status = manager.Stop();
+    assert(!stop_status.IsFailed());
+}
+
+inline bool ServerResourceExhausted()
+{
+    return server_resource_exhausted;
+}
+
+inline void DeliveryOverflowCoalescesTerminalErrorPasses()
+{
+    server_resource_exhausted = false;
+
+    Network::NetworkManager manager { };
+    Network::NetworkConfig config = MakeConfig();
+    config.servers[0].bind.port = 39103;
+    config.servers[0].delivery_queue_capacity = 1;
+    Status<void> configure_status = manager.Configure(std::move(config));
+    assert(!configure_status.IsFailed());
+
+    Network::Server* server = manager.GetServer(1);
+    assert(server != nullptr);
+    assert(!server->Register(Network::ErrorHandler::Bind<&OnServerError>()).IsFailed());
+
+    Status<void> start_status = manager.Start();
+    assert(!start_status.IsFailed());
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd >= 0);
+
+    sockaddr_in addr { };
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(39103);
+    assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
+    assert(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+
+    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 1 }, byte { 1 } };
+    assert(send(fd, packet, sizeof(packet), 0) == static_cast<ssize_t>(sizeof(packet)));
+    assert(Pump(manager, &ServerResourceExhausted));
+
+    close(fd);
+    Status<void> stop_status = manager.Stop();
+    assert(!stop_status.IsFailed());
+}
+#endif
+
+} // namespace NetworkTests
+
+inline void NetworkPasses()
+{
+    NetworkTests::ConfigValidationPasses();
+    NetworkTests::LifecyclePasses();
+    NetworkTests::EndpointLookupPasses();
+    NetworkTests::EndpointApiGuardPasses();
+    NetworkTests::PacketFramingPasses();
+#if defined(__linux__)
+    NetworkTests::TcpLoopbackPasses();
+    NetworkTests::UnsupportedFlagsFailConnectionPasses();
+    NetworkTests::DeliveryOverflowCoalescesTerminalErrorPasses();
+#endif
 }
 
 } // namespace Tests

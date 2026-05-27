@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IMessage.hpp"
+#include "Server.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -9,19 +9,24 @@ namespace Network {
 class Client
 {
 public:
-    explicit Client(uint8 id) : id(id), response_allocator(nullptr)
-    {
-    }
+    Client() = default;
 
-    virtual ~Client() = default;
+    Status<void> Register(MessageHandler handler);
+    Status<void> Register(ConnectionEventHandler handler);
+    Status<void> Register(ErrorHandler handler);
 
-    const uint8 id;
-    virtual Status<void> Connect() = 0;
-    virtual Status<void> Disconnect() = 0;
-    virtual void Send(IMessage* resp) = 0;
+    Status<void> Connect();
+    Status<void> Disconnect();
+    Status<void> Send(IMessage& message);
+    ClientState State() const noexcept;
+    EndpointId Id() const noexcept;
 
-protected:
-    IMessageAllocator* response_allocator;
+private:
+    friend class NetworkManager;
+
+    explicit Client(void* endpoint);
+
+    void* endpoint = nullptr;
 };
 
 } // namespace Network
