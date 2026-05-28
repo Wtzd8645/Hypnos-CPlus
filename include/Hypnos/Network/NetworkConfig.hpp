@@ -43,7 +43,9 @@ struct NetworkConfig
 {
     BackendType backend = BackendType::None;
     uint16 worker_count = 0;
-    OwnedNetworkObjects owned_objects;
+    List<UniquePtr<ICodec>> codecs;
+    UniquePtr<IMessageAllocator> message_allocator;
+    UniquePtr<IPacketPipeline> packet_pipeline;
     List<ServerConfig> servers;
     List<ClientConfig> clients;
 

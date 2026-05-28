@@ -11,7 +11,7 @@ using PacketSize = uint16;
 
 constexpr PacketSize PACKET_HEADER_SIZE = 4;
 constexpr PacketSize MAX_PACKET_PAYLOAD_SIZE = 65535;
-constexpr EndpointId INVALID_ENDPOINT_ID = 0;
+constexpr EndpointId INVALID_ENDPOINT_ID = 0xFFFF;
 
 enum class TransportProtocol : uint8
 {

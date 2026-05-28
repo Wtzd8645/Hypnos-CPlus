@@ -111,7 +111,7 @@ public:
     void DrainWake();
     void ProcessCommands(NetworkCore& network_core);
     void HandleCommand(NetworkCore& network_core, const WorkerCommand& command);
-    void HandleListen(NetworkCore& network_core, int32 fd);
+    void HandleListen(NetworkCore& network_core, EndpointId endpoint_id, int32 fd);
     void HandleConnection(NetworkCore& network_core, int32 fd, uint32 events);
     void HandleReadable(NetworkCore& network_core, Endpoint& endpoint, ConnectionSlot& connection);
     void HandleWritable(NetworkCore& network_core, ConnectionSlot& connection);

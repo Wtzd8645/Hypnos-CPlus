@@ -34,7 +34,7 @@ public:
     }
 
 private:
-    uint8 codec_id = 1;
+    uint8 codec_id = 0;
 };
 
 class FakeAllocator : public Network::IMessageAllocator
@@ -59,9 +59,14 @@ public:
 class FakeCodec : public Network::ICodec
 {
 public:
+    explicit FakeCodec(uint8 codec_id = 0) :
+        codec_id(codec_id)
+    {
+    }
+
     uint8 Id() const noexcept override
     {
-        return 1;
+        return codec_id;
     }
 
     Status<Network::PacketSize> Encode(Network::IMessage& message, byte* buffer, Network::PacketSize capacity) override
@@ -83,33 +88,9 @@ public:
         (void)size;
         return Status<Network::IMessage*>::Success(allocator.Acquire(Id()));
     }
-};
-
-class FakeCodecRegistry : public Network::ICodecRegistry
-{
-public:
-    explicit FakeCodecRegistry(bool has_duplicate_codec = false) :
-        has_duplicate_codec(has_duplicate_codec)
-    {
-    }
-
-    Status<void> Validate() const override
-    {
-        if (has_duplicate_codec)
-        {
-            return Status<void>::Error(Network::ToErrorCode(Network::NetworkStatus::InvalidConfig), "[NetworkTests] Duplicate codec id.");
-        }
-        return Status<void>::Success();
-    }
-
-    Network::ICodec* Find(uint8 codec_id) const override
-    {
-        return codec_id == codec.Id() ? const_cast<FakeCodec*>(&codec) : nullptr;
-    }
 
 private:
-    bool has_duplicate_codec = false;
-    FakeCodec codec;
+    uint8 codec_id = 0;
 };
 
 class FakePipeline : public Network::IPacketPipeline
@@ -162,15 +143,15 @@ inline Network::ClientConfig MakeClientConfig(Network::EndpointId id)
     return config;
 }
 
-inline Network::NetworkConfig MakeConfig(bool has_duplicate_codec = false)
+inline Network::NetworkConfig MakeConfig(bool has_codec_id_mismatch = false)
 {
     Network::NetworkConfig config { };
     config.backend = Network::BackendType::Epoll;
     config.worker_count = 1;
-    config.owned_objects.codec_registry = std::make_unique<FakeCodecRegistry>(has_duplicate_codec);
-    config.owned_objects.message_allocator = std::make_unique<FakeAllocator>();
-    config.owned_objects.packet_pipeline = std::make_unique<FakePipeline>();
-    config.servers.push_back(MakeServerConfig(1));
+    config.codecs.push_back(std::make_unique<FakeCodec>(has_codec_id_mismatch ? 1 : 0));
+    config.message_allocator = std::make_unique<FakeAllocator>();
+    config.packet_pipeline = std::make_unique<FakePipeline>();
+    config.servers.push_back(MakeServerConfig(0));
     return config;
 }
 
@@ -179,11 +160,11 @@ inline Network::NetworkConfig MakeLoopbackConfig(uint16 port)
     Network::NetworkConfig config { };
     config.backend = Network::BackendType::Epoll;
     config.worker_count = 1;
-    config.owned_objects.codec_registry = std::make_unique<FakeCodecRegistry>();
-    config.owned_objects.message_allocator = std::make_unique<FakeAllocator>();
-    config.owned_objects.packet_pipeline = std::make_unique<FakePipeline>();
-    config.servers.push_back(MakeServerConfig(1));
-    config.clients.push_back(MakeClientConfig(2));
+    config.codecs.push_back(std::make_unique<FakeCodec>());
+    config.message_allocator = std::make_unique<FakeAllocator>();
+    config.packet_pipeline = std::make_unique<FakePipeline>();
+    config.servers.push_back(MakeServerConfig(0));
+    config.clients.push_back(MakeClientConfig(1));
     config.servers[0].bind.port = port;
     config.clients[0].remote.port = port;
     return config;
@@ -225,13 +206,34 @@ inline void ConfigValidationPasses()
     {
         Network::NetworkManager manager { };
         Network::NetworkConfig config = MakeConfig();
-        config.servers.push_back(MakeServerConfig(1));
+        config.servers.push_back(MakeServerConfig(0));
         assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
     }
 
     {
         Network::NetworkManager manager { };
         Network::NetworkConfig config = MakeConfig(true);
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.servers[0].id = 1;
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.codecs[0].reset();
+        assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
+    }
+
+    {
+        Network::NetworkManager manager { };
+        Network::NetworkConfig config = MakeConfig();
+        config.message_allocator.reset();
         assert(FailedWith(manager.Configure(std::move(config)), Network::NetworkStatus::InvalidConfig));
     }
 
@@ -263,7 +265,7 @@ inline void LifecyclePasses()
     assert(FailedWith(manager.Update(), Network::NetworkStatus::NotReady));
     assert(FailedWith(manager.Configure(MakeConfig()), Network::NetworkStatus::InvalidState));
 
-    Network::Server* server = manager.GetServer(1);
+    Network::Server* server = manager.GetServer(0);
     assert(server != nullptr);
     assert(server->State() == Network::ServerState::Stopped);
     assert(!server->Register(Network::MessageHandler { }).IsFailed());
@@ -283,22 +285,22 @@ inline void LifecyclePasses()
 
     manager.Release();
     assert(manager.State() == Network::ManagerState::Unconfigured);
-    assert(manager.GetServer(1) == nullptr);
+    assert(manager.GetServer(0) == nullptr);
 }
 
 inline void EndpointLookupPasses()
 {
     Network::NetworkConfig config = MakeConfig();
-    config.clients.push_back(MakeClientConfig(2));
+    config.clients.push_back(MakeClientConfig(1));
 
     Network::NetworkManager manager { };
     Status<void> status = manager.Configure(std::move(config));
     assert(!status.IsFailed());
 
-    assert(manager.GetServer(1) != nullptr);
-    assert(manager.GetClient(2) != nullptr);
-    assert(manager.GetServer(2) == nullptr);
-    assert(manager.GetClient(1) == nullptr);
+    assert(manager.GetServer(0) != nullptr);
+    assert(manager.GetClient(1) != nullptr);
+    assert(manager.GetServer(1) == nullptr);
+    assert(manager.GetClient(0) == nullptr);
     assert(manager.GetServer(99) == nullptr);
 }
 
@@ -309,10 +311,10 @@ inline void EndpointApiGuardPasses()
     Status<void> configure_status = manager.Configure(std::move(config));
     assert(!configure_status.IsFailed());
 
-    Network::Server* server = manager.GetServer(1);
+    Network::Server* server = manager.GetServer(0);
     assert(server != nullptr);
 
-    FakeMessage message { 1 };
+    FakeMessage message { 0 };
     Network::ConnectionHandle invalid_handle { };
     assert(FailedWith(server->Send(invalid_handle, message), Network::NetworkStatus::NotReady));
 
@@ -409,8 +411,8 @@ inline void TcpLoopbackPasses()
     Status<void> configure_status = manager.Configure(std::move(config));
     assert(!configure_status.IsFailed());
 
-    Network::Server* server = manager.GetServer(1);
-    Network::Client* client = manager.GetClient(2);
+    Network::Server* server = manager.GetServer(0);
+    Network::Client* client = manager.GetClient(1);
     assert(server != nullptr);
     assert(client != nullptr);
 
@@ -426,7 +428,7 @@ inline void TcpLoopbackPasses()
     assert(!connect_status.IsFailed());
     assert(Pump(manager, &BothConnected));
 
-    FakeMessage client_message { 1 };
+    FakeMessage client_message { 0 };
     Status<void> client_send_status = client->Send(client_message);
     assert(!client_send_status.IsFailed());
     assert(Pump(manager, &ServerReceived));
@@ -437,7 +439,7 @@ inline void TcpLoopbackPasses()
     assert(!release_update_status.IsFailed());
     assert(FakeAllocator::release_count == 1);
 
-    FakeMessage server_message { 1 };
+    FakeMessage server_message { 0 };
     Status<void> server_send_status = server->Send(server_connection, server_message);
     assert(!server_send_status.IsFailed());
     assert(Pump(manager, &ClientReceived));
@@ -477,7 +479,7 @@ inline void UnsupportedFlagsFailConnectionPasses()
     Status<void> configure_status = manager.Configure(std::move(config));
     assert(!configure_status.IsFailed());
 
-    Network::Server* server = manager.GetServer(1);
+    Network::Server* server = manager.GetServer(0);
     assert(server != nullptr);
     assert(!server->Register(Network::ErrorHandler::Bind<&OnServerError>()).IsFailed());
 
@@ -493,7 +495,42 @@ inline void UnsupportedFlagsFailConnectionPasses()
     assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
     assert(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
 
-    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 1 }, byte { 1 } };
+    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 0 }, byte { 1 } };
+    assert(send(fd, packet, sizeof(packet), 0) == static_cast<ssize_t>(sizeof(packet)));
+    assert(Pump(manager, &ServerCodecError));
+
+    close(fd);
+    Status<void> stop_status = manager.Stop();
+    assert(!stop_status.IsFailed());
+}
+
+inline void UnknownCodecFailsConnectionPasses()
+{
+    server_codec_error = false;
+
+    Network::NetworkManager manager { };
+    Network::NetworkConfig config = MakeConfig();
+    config.servers[0].bind.port = 39104;
+    Status<void> configure_status = manager.Configure(std::move(config));
+    assert(!configure_status.IsFailed());
+
+    Network::Server* server = manager.GetServer(0);
+    assert(server != nullptr);
+    assert(!server->Register(Network::ErrorHandler::Bind<&OnServerError>()).IsFailed());
+
+    Status<void> start_status = manager.Start();
+    assert(!start_status.IsFailed());
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    assert(fd >= 0);
+
+    sockaddr_in addr { };
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(39104);
+    assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
+    assert(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+
+    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 1 }, byte { 0 } };
     assert(send(fd, packet, sizeof(packet), 0) == static_cast<ssize_t>(sizeof(packet)));
     assert(Pump(manager, &ServerCodecError));
 
@@ -518,7 +555,7 @@ inline void DeliveryOverflowCoalescesTerminalErrorPasses()
     Status<void> configure_status = manager.Configure(std::move(config));
     assert(!configure_status.IsFailed());
 
-    Network::Server* server = manager.GetServer(1);
+    Network::Server* server = manager.GetServer(0);
     assert(server != nullptr);
     assert(!server->Register(Network::ErrorHandler::Bind<&OnServerError>()).IsFailed());
 
@@ -534,7 +571,7 @@ inline void DeliveryOverflowCoalescesTerminalErrorPasses()
     assert(inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) == 1);
     assert(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
 
-    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 1 }, byte { 1 } };
+    byte packet[Network::PACKET_HEADER_SIZE] { byte { 0 }, byte { 0 }, byte { 0 }, byte { 1 } };
     assert(send(fd, packet, sizeof(packet), 0) == static_cast<ssize_t>(sizeof(packet)));
     assert(Pump(manager, &ServerResourceExhausted));
 
@@ -556,6 +593,7 @@ inline void NetworkPasses()
 #if defined(__linux__)
     NetworkTests::TcpLoopbackPasses();
     NetworkTests::UnsupportedFlagsFailConnectionPasses();
+    NetworkTests::UnknownCodecFailsConnectionPasses();
     NetworkTests::DeliveryOverflowCoalescesTerminalErrorPasses();
 #endif
 }

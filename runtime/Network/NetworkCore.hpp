@@ -5,8 +5,6 @@
 #include "Endpoint.hpp"
 #include "EpollWorker_Unix.hpp"
 
-#include <thread>
-
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
@@ -21,40 +19,17 @@ struct NetworkCore
     List<IMessage*> delivered_messages;
     Mutex mutex;
     ManagerState manager_state = ManagerState::Unconfigured;
-    std::thread::id owner_thread_id { };
     bool is_dispatching_callbacks = false;
     bool is_dispatching_message_callback = false;
 
     Endpoint* FindEndpoint(EndpointId id) const noexcept
     {
-        for (const UniquePtr<Endpoint>& endpoint : endpoints)
+        if (id == INVALID_ENDPOINT_ID || static_cast<size_t>(id) >= endpoints.size())
         {
-            if (endpoint->id == id)
-            {
-                return endpoint.get();
-            }
+            return nullptr;
         }
-        return nullptr;
-    }
 
-    Endpoint* FindEndpointForFd(int32 fd) const noexcept
-    {
-        for (const UniquePtr<Endpoint>& endpoint : endpoints)
-        {
-            if (endpoint->listen_fd == fd)
-            {
-                return endpoint.get();
-            }
-
-            for (const ConnectionSlot& connection : endpoint->connections)
-            {
-                if (connection.fd == fd)
-                {
-                    return endpoint.get();
-                }
-            }
-        }
-        return nullptr;
+        return endpoints[id].get();
     }
 
     Server* FindServer(EndpointId id) noexcept
@@ -71,13 +46,13 @@ struct NetworkCore
 
     void ReleaseDeliveredMessages()
     {
-        if (config.owned_objects.message_allocator != nullptr)
+        if (config.message_allocator != nullptr)
         {
             for (IMessage* message : delivered_messages)
             {
                 if (message != nullptr)
                 {
-                    config.owned_objects.message_allocator->Release(*message);
+                    config.message_allocator->Release(*message);
                 }
             }
         }
@@ -165,7 +140,7 @@ struct NetworkCore
 
     Status<void> Start();
     void Stop();
-    void DispatchCallbacks(NetworkManager& manager);
+    void DispatchCallbacks();
     void CleanupTransport();
 };
 

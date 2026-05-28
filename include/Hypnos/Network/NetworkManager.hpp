@@ -37,9 +37,6 @@ private:
     Status<void> ValidateConfig(const NetworkConfig& config) const;
     Status<void> ValidateServerConfig(const ServerConfig& server_config, const NetworkConfig& config) const;
     Status<void> ValidateClientConfig(const ClientConfig& client_config, const NetworkConfig& config) const;
-    Status<void> CheckOwnerThread(const char* context) const;
-    void BindOwnerThread() noexcept;
-    bool IsOwnerThread() const noexcept;
 };
 
 } // namespace Network

@@ -2,8 +2,7 @@
 
 #include "NetworkCore.hpp"
 #include "SocketUtils_Unix.hpp"
-
-#include <cstring>
+#include "TcpPacketAssembler.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -82,7 +81,7 @@ void EpollWorker::Run(NetworkCore& network_core)
 
             if (binding_it->second.kind == FdKind::Listen)
             {
-                HandleListen(network_core, fd);
+                HandleListen(network_core, binding_it->second.endpoint_id, fd);
             }
             else
             {
@@ -178,7 +177,7 @@ void EpollWorker::HandleCommand(NetworkCore& network_core, const WorkerCommand& 
     }
 }
 
-void EpollWorker::HandleListen(NetworkCore& network_core, int32 fd)
+void EpollWorker::HandleListen(NetworkCore& network_core, EndpointId endpoint_id, int32 fd)
 {
     while (true)
     {
@@ -195,7 +194,7 @@ void EpollWorker::HandleListen(NetworkCore& network_core, int32 fd)
         }
 
         LockGuard<Mutex> lock(network_core.mutex);
-        Endpoint* endpoint = network_core.FindEndpointForFd(fd);
+        Endpoint* endpoint = network_core.FindEndpoint(endpoint_id);
         if (endpoint == nullptr)
         {
             close(accepted_fd);
@@ -317,64 +316,31 @@ void EpollWorker::HandleReadable(NetworkCore& network_core, Endpoint& endpoint, 
 
         connection.stream_size += static_cast<size_t>(read_size);
 
-        while (connection.stream_size >= PACKET_HEADER_SIZE)
+        while (true)
         {
-            Status<PacketHeader> header_status = ReadPacketHeader(connection.stream_buffer.data(), static_cast<uint32>(connection.stream_size));
-            if (header_status.IsFailed())
-            {
-                FailConnection(network_core, endpoint, connection, NetworkStatus::CodecError, "[EpollBackend] Packet header decode failed.");
-                return;
-            }
-
-            PacketHeader header = header_status.Value();
-            size_t packet_size = static_cast<size_t>(PACKET_HEADER_SIZE) + header.payload_size;
-            if (packet_size > connection.stream_buffer.size())
-            {
-                FailConnection(network_core, endpoint, connection, NetworkStatus::CodecError, "[EpollBackend] Packet exceeds configured codec buffer capacity.");
-                return;
-            }
-
-            if (header.flags != 0)
-            {
-                FailConnection(network_core, endpoint, connection, NetworkStatus::CodecError, "[EpollBackend] Packet flags are unsupported.");
-                return;
-            }
-
-            if (connection.stream_size < packet_size)
+            PacketAssemblyResult result = TryAssembleTcpPacket(connection);
+            if (result.type == PacketAssemblyResultType::NeedMoreData)
             {
                 break;
             }
 
-            uint32 packet_slot = connection.AcquireReceiveSlot();
-            if (packet_slot == INVALID_SLOT)
+            if (result.type == PacketAssemblyResultType::Failed)
             {
-                FailConnection(network_core, endpoint, connection, NetworkStatus::ResourceExhausted, "[EpollBackend] Receive packet slots are exhausted.");
+                FailConnection(network_core, endpoint, connection, result.status, result.detail);
                 return;
             }
-
-            PacketStorage& packet = connection.receive_slots[packet_slot];
-            std::memcpy(packet.bytes.data(), connection.stream_buffer.data(), packet_size);
-            packet.size = static_cast<uint32>(packet_size);
-            packet.codec_id = header.codec_id;
 
             DeliveryEvent event { };
             event.type = DeliveryType::Message;
             event.endpoint_id = endpoint.id;
             event.connection = connection.Handle();
-            event.packet_slot = packet_slot;
+            event.packet_slot = result.packet_slot;
             if (!network_core.QueueDelivery(endpoint, event))
             {
-                connection.ReleaseReceiveSlot(packet_slot);
+                connection.ReleaseReceiveSlot(result.packet_slot);
                 FailConnection(network_core, endpoint, connection, NetworkStatus::ResourceExhausted, "[EpollBackend] Delivery queue is full.");
                 return;
             }
-
-            size_t remaining_bytes = connection.stream_size - packet_size;
-            if (remaining_bytes > 0)
-            {
-                std::memmove(connection.stream_buffer.data(), connection.stream_buffer.data() + packet_size, remaining_bytes);
-            }
-            connection.stream_size = remaining_bytes;
         }
     }
 

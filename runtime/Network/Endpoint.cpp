@@ -2,6 +2,8 @@
 
 #include "NetworkCore.hpp"
 
+#include <cassert>
+
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
@@ -310,11 +312,14 @@ Status<void> Endpoint::QueueMessage(ConnectionHandle connection_handle, IMessage
         return NetworkError(NetworkStatus::InvalidHandle, "[Endpoint] Send target is not connected.");
     }
 
-    ICodec* codec = owner->config.owned_objects.codec_registry->Find(message.CodecId());
+    ICodec* codec = message.CodecId() < owner->config.codecs.size()
+        ? owner->config.codecs[message.CodecId()].get()
+        : nullptr;
     if (codec == nullptr)
     {
         return NetworkError(NetworkStatus::CodecError, "[Endpoint] Message codec id is not registered.");
     }
+    assert(codec->Id() == message.CodecId());
 
     uint32 packet_slot = connection->AcquireSendSlot();
     if (packet_slot == INVALID_SLOT)
@@ -325,7 +330,7 @@ Status<void> Endpoint::QueueMessage(ConnectionHandle connection_handle, IMessage
     PacketStorage& packet = connection->send_slots[packet_slot];
     byte* payload = packet.bytes.data() + PACKET_HEADER_SIZE;
     PacketSize payload_capacity = static_cast<PacketSize>(packet.bytes.size() - PACKET_HEADER_SIZE);
-    Status<PacketSize> encode_status = owner->config.owned_objects.packet_pipeline->Encode(*codec, message, payload, payload_capacity);
+    Status<PacketSize> encode_status = owner->config.packet_pipeline->Encode(*codec, message, payload, payload_capacity);
     if (encode_status.IsFailed())
     {
         connection->ReleaseSendSlot(packet_slot);

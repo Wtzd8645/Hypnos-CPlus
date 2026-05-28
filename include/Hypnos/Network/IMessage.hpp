@@ -32,15 +32,6 @@ public:
     virtual Status<IMessage*> Decode(const byte* buffer, PacketSize size, IMessageAllocator& allocator) = 0;
 };
 
-class ICodecRegistry
-{
-public:
-    virtual ~ICodecRegistry() = default;
-
-    virtual Status<void> Validate() const = 0;
-    virtual ICodec* Find(uint8 codec_id) const = 0;
-};
-
 class IPacketPipeline
 {
 public:
@@ -48,18 +39,6 @@ public:
 
     virtual Status<PacketSize> Encode(ICodec& codec, IMessage& message, byte* buffer, PacketSize capacity) = 0;
     virtual Status<IMessage*> Decode(ICodec& codec, const byte* buffer, PacketSize size, IMessageAllocator& allocator) = 0;
-};
-
-struct OwnedNetworkObjects
-{
-    UniquePtr<ICodecRegistry> codec_registry;
-    UniquePtr<IMessageAllocator> message_allocator;
-    UniquePtr<IPacketPipeline> packet_pipeline;
-
-    bool IsComplete() const noexcept
-    {
-        return codec_registry != nullptr && message_allocator != nullptr && packet_pipeline != nullptr;
-    }
 };
 
 struct PacketBuffer
