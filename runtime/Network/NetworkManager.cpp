@@ -3,6 +3,7 @@
 #include "NetworkCore.hpp"
 
 #include <cassert>
+#include <memory>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -73,13 +74,7 @@ Status<void> NetworkManager::Configure(NetworkConfig&& network_config)
         server.endpoint = nullptr;
 
         auto endpoint = std::make_unique<Endpoint>();
-        Status<void> status = endpoint->InitializeServer(*network_core, server, network_core->config.servers[i]);
-        if (status.IsFailed())
-        {
-            Release();
-            return status;
-        }
-
+        endpoint->InitializeServer(*network_core, server, network_core->config.servers[i]);
         server.endpoint = endpoint.get();
         network_core->endpoints.push_back(std::move(endpoint));
     }
@@ -91,13 +86,7 @@ Status<void> NetworkManager::Configure(NetworkConfig&& network_config)
         client.endpoint = nullptr;
 
         auto endpoint = std::make_unique<Endpoint>();
-        Status<void> status = endpoint->InitializeClient(*network_core, client, network_core->config.clients[i]);
-        if (status.IsFailed())
-        {
-            Release();
-            return status;
-        }
-
+        endpoint->InitializeClient(*network_core, client, network_core->config.clients[i]);
         client.endpoint = endpoint.get();
         network_core->endpoints.push_back(std::move(endpoint));
     }
@@ -171,12 +160,7 @@ Status<void> NetworkManager::Stop()
     network_core->manager_state = ManagerState::Stopping;
     network_core->is_dispatching_callbacks = false;
     network_core->is_dispatching_message_callback = false;
-    Status<void> stop_status = network_core->Stop();
-    if (stop_status.IsFailed())
-    {
-        return stop_status;
-    }
-
+    network_core->Stop();
     network_core->manager_state = ManagerState::Configured;
     return Status<void>::Success();
 }
@@ -235,9 +219,9 @@ Status<void> NetworkManager::Update()
 
     network_core->ReleaseDeliveredMessages();
     network_core->is_dispatching_callbacks = true;
-    Status<void> dispatch_status = network_core->DispatchCallbacks(*this);
+    network_core->DispatchCallbacks(*this);
     network_core->is_dispatching_callbacks = false;
-    return dispatch_status;
+    return Status<void>::Success();
 }
 
 Server* NetworkManager::GetServer(EndpointId id)

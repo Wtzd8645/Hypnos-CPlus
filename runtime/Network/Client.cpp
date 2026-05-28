@@ -1,6 +1,6 @@
 #include <Hypnos/Network/Client.hpp>
 
-#include "NetworkCore.hpp"
+#include "Endpoint.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

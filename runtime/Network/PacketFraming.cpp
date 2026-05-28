@@ -1,21 +1,21 @@
 #include "PacketFraming.hpp"
 
+#include <cassert>
+
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
 
-Status<void> WritePacketHeader(PacketSize payload_size, uint8 codec_id, byte* buffer, uint32 capacity)
+void WritePacketHeader(PacketSize payload_size, uint8 codec_id, byte* buffer, uint32 capacity)
 {
-    if (buffer == nullptr || capacity < PACKET_HEADER_SIZE)
-    {
-        return Status<void>::Error(ToErrorCode(NetworkStatus::InvalidConfig), "[PacketFraming] Header buffer is invalid.");
-    }
+    assert(buffer != nullptr);
+    assert(capacity >= PACKET_HEADER_SIZE);
+    (void)capacity;
 
     buffer[0] = static_cast<byte>((payload_size >> 8) & 0xFF);
     buffer[1] = static_cast<byte>(payload_size & 0xFF);
     buffer[2] = static_cast<byte>(codec_id);
     buffer[3] = static_cast<byte>(0);
-    return Status<void>::Success();
 }
 
 Status<PacketHeader> ReadPacketHeader(const byte* buffer, uint32 size)

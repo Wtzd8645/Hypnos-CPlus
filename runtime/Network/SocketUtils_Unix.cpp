@@ -1,4 +1,12 @@
-#include "NetworkCore.hpp"
+#include "SocketUtils_Unix.hpp"
+
+#if defined(__linux__)
+#include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -15,7 +23,7 @@ int32 SetNonBlocking(int32 fd)
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-Status<void> FillAddress(const EndpointAddress& address, sockaddr_storage& storage, socklen_t& length)
+bool FillAddress(const EndpointAddress& address, sockaddr_storage& storage, socklen_t& length)
 {
     std::memset(&storage, 0, sizeof(storage));
 
@@ -26,7 +34,7 @@ Status<void> FillAddress(const EndpointAddress& address, sockaddr_storage& stora
     {
         std::memcpy(&storage, &ipv4, sizeof(ipv4));
         length = sizeof(ipv4);
-        return Status<void>::Success();
+        return true;
     }
 
     sockaddr_in6 ipv6 { };
@@ -36,20 +44,19 @@ Status<void> FillAddress(const EndpointAddress& address, sockaddr_storage& stora
     {
         std::memcpy(&storage, &ipv6, sizeof(ipv6));
         length = sizeof(ipv6);
-        return Status<void>::Success();
+        return true;
     }
 
-    return NetworkError(NetworkStatus::InvalidConfig, "[EpollBackend] Endpoint address must be a numeric IPv4 or IPv6 address.");
+    return false;
 }
 
 Status<int32> OpenListenSocket(const EndpointAddress& address)
 {
     sockaddr_storage storage { };
     socklen_t length = 0;
-    Status<void> address_status = FillAddress(address, storage, length);
-    if (address_status.IsFailed())
+    if (!FillAddress(address, storage, length))
     {
-        return Status<int32>::Error(static_cast<ErrorCode>(address_status.ErrorCode()), address_status.Message());
+        return Status<int32>::Error(ToErrorCode(NetworkStatus::InvalidConfig), "[EpollBackend] Endpoint address must be a numeric IPv4 or IPv6 address.");
     }
 
     int32 fd = socket(storage.ss_family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -80,10 +87,9 @@ Status<int32> OpenClientSocket(const EndpointAddress& address, bool& is_pending)
 {
     sockaddr_storage storage { };
     socklen_t length = 0;
-    Status<void> address_status = FillAddress(address, storage, length);
-    if (address_status.IsFailed())
+    if (!FillAddress(address, storage, length))
     {
-        return Status<int32>::Error(static_cast<ErrorCode>(address_status.ErrorCode()), address_status.Message());
+        return Status<int32>::Error(ToErrorCode(NetworkStatus::InvalidConfig), "[EpollBackend] Endpoint address must be a numeric IPv4 or IPv6 address.");
     }
 
     int32 fd = socket(storage.ss_family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);

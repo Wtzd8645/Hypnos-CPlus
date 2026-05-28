@@ -325,8 +325,7 @@ inline void EndpointApiGuardPasses()
 inline void PacketFramingPasses()
 {
     byte buffer[Network::PACKET_HEADER_SIZE] { };
-    Status<void> write_status = Network::WritePacketHeader(0x1234, 7, buffer, sizeof(buffer));
-    assert(!write_status.IsFailed());
+    Network::WritePacketHeader(0x1234, 7, buffer, sizeof(buffer));
     assert(static_cast<uint8>(buffer[0]) == 0x12);
     assert(static_cast<uint8>(buffer[1]) == 0x34);
     assert(static_cast<uint8>(buffer[2]) == 7);

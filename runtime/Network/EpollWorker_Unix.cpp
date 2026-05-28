@@ -1,4 +1,9 @@
+#include "EpollWorker_Unix.hpp"
+
 #include "NetworkCore.hpp"
+#include "SocketUtils_Unix.hpp"
+
+#include <cstring>
 
 namespace Blanketmen {
 namespace Hypnos {
@@ -132,7 +137,7 @@ void EpollWorker::HandleCommand(NetworkCore& network_core, const WorkerCommand& 
 
     if (command.type == WorkerCommandType::ConnectClient)
     {
-        (void)StartClientConnect(network_core, *endpoint);
+        StartClientConnect(network_core, *endpoint);
         return;
     }
 
@@ -478,22 +483,22 @@ Status<void> EpollWorker::RegisterConnectionSocket(Endpoint& endpoint, Connectio
     return Status<void>::Success();
 }
 
-Status<void> EpollWorker::StartClientConnect(NetworkCore& network_core, Endpoint& endpoint)
+void EpollWorker::StartClientConnect(NetworkCore& network_core, Endpoint& endpoint)
 {
     if (endpoint.kind != EndpointKind::Client || endpoint.connections.empty())
     {
-        return NetworkError(NetworkStatus::InvalidState, "[EpollBackend] Connect target is not a client endpoint.");
+        return;
     }
 
     if (endpoint.client != nullptr && endpoint.client_state != ClientState::Connecting)
     {
-        return NetworkError(NetworkStatus::InvalidState, "[EpollBackend] Client connect command was cancelled.");
+        return;
     }
 
     ConnectionSlot& connection = endpoint.connections[0];
     if (connection.state != ConnectionState::Closed && connection.state != ConnectionState::Failed)
     {
-        return NetworkError(NetworkStatus::InvalidState, "[EpollBackend] Client connection is already active.");
+        return;
     }
 
     bool is_pending = false;
@@ -505,7 +510,7 @@ Status<void> EpollWorker::StartClientConnect(NetworkCore& network_core, Endpoint
             endpoint.client_state = ClientState::Failed;
         }
         endpoint.QueueTerminalError(ConnectionHandle { }, NetworkStatus::TransportError, fd_status.Message());
-        return Status<void>::Error(static_cast<ErrorCode>(fd_status.ErrorCode()), fd_status.Message());
+        return;
     }
 
     ++connection.generation;
@@ -529,7 +534,7 @@ Status<void> EpollWorker::StartClientConnect(NetworkCore& network_core, Endpoint
             endpoint.client_state = ClientState::Failed;
         }
         endpoint.QueueTerminalError(ConnectionHandle { }, NetworkStatus::TransportError, register_status.Message());
-        return register_status;
+        return;
     }
 
     if (!is_pending)
@@ -548,7 +553,7 @@ Status<void> EpollWorker::StartClientConnect(NetworkCore& network_core, Endpoint
         network_core.QueueDelivery(endpoint, event);
     }
 
-    return Status<void>::Success();
+    return;
 }
 
 #endif

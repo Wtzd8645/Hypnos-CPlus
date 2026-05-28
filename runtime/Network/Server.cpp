@@ -1,6 +1,6 @@
 #include <Hypnos/Network/Server.hpp>
 
-#include "NetworkCore.hpp"
+#include "Endpoint.hpp"
 
 namespace Blanketmen {
 namespace Hypnos {

@@ -1,3 +1,5 @@
+#include "Endpoint.hpp"
+
 #include "NetworkCore.hpp"
 
 namespace Blanketmen {
@@ -330,13 +332,7 @@ Status<void> Endpoint::QueueMessage(ConnectionHandle connection_handle, IMessage
         return Status<void>::Error(static_cast<ErrorCode>(encode_status.ErrorCode()), encode_status.Message());
     }
 
-    Status<void> header_status = WritePacketHeader(encode_status.Value(), codec->Id(), packet.bytes.data(), static_cast<uint32>(packet.bytes.size()));
-    if (header_status.IsFailed())
-    {
-        connection->ReleaseSendSlot(packet_slot);
-        return header_status;
-    }
-
+    WritePacketHeader(encode_status.Value(), codec->Id(), packet.bytes.data(), static_cast<uint32>(packet.bytes.size()));
     packet.codec_id = codec->Id();
     packet.size = static_cast<uint32>(PACKET_HEADER_SIZE + encode_status.Value());
 

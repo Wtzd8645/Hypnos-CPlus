@@ -1,8 +1,13 @@
 #include "NetworkCore.hpp"
 
+#include "SocketUtils_Unix.hpp"
+
+#include <memory>
+
 namespace Blanketmen {
 namespace Hypnos {
 namespace Network {
+
 Status<void> NetworkCore::Start()
 {
 #if !defined(__linux__)
@@ -67,13 +72,12 @@ Status<void> NetworkCore::Start()
 #endif
 }
 
-Status<void> NetworkCore::Stop()
+void NetworkCore::Stop()
 {
     CleanupTransport();
-    return Status<void>::Success();
 }
 
-Status<void> NetworkCore::DispatchCallbacks(NetworkManager& manager)
+void NetworkCore::DispatchCallbacks(NetworkManager& manager)
 {
     (void)manager;
 
@@ -252,7 +256,6 @@ Status<void> NetworkCore::DispatchCallbacks(NetworkManager& manager)
 #endif
     }
 
-    return Status<void>::Success();
 }
 
 void NetworkCore::CleanupTransport()

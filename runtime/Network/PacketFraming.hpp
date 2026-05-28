@@ -13,7 +13,7 @@ struct PacketHeader
     uint8 flags = 0;
 };
 
-Status<void> WritePacketHeader(PacketSize payload_size, uint8 codec_id, byte* buffer, uint32 capacity);
+void WritePacketHeader(PacketSize payload_size, uint8 codec_id, byte* buffer, uint32 capacity);
 Status<PacketHeader> ReadPacketHeader(const byte* buffer, uint32 size);
 
 } // namespace Network
