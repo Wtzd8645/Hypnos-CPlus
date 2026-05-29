@@ -140,7 +140,7 @@ struct NetworkCore
 
     Status<void> Start();
     void Stop();
-    void DispatchCallbacks();
+    void ProcessDeliveries();
     void CleanupTransport();
 };
 

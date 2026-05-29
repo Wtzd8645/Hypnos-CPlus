@@ -3,7 +3,6 @@ find_package(Threads REQUIRED)
 add_library(Hypnos STATIC
     "Network/NetworkManager.cpp" "Network/NetworkCore.cpp" "Network/Endpoint.cpp" "Network/EpollWorker_Unix.cpp" "Network/SocketUtils_Unix.cpp"
     "Network/Server.cpp" "Network/Client.cpp" "Network/PacketFraming.cpp" "Network/TcpPacketAssembler.cpp"
-    "Network/InboundPacketProcessor.cpp" "Network/DeliveryPump.cpp"
     "GameData/GameDataManager.cpp" "GameData/I18nTextManager.cpp"
     "GameState/GameStateManager.cpp"
     "GameTime/GameTimeManager.cpp" "GameTime/CountdownTimer.cpp" "GameTime/LapTimer.cpp")

@@ -265,7 +265,7 @@ Status<void> NetworkManager::Update()
 
     network_core->ReleaseDeliveredMessages();
     network_core->is_dispatching_callbacks = true;
-    network_core->DispatchCallbacks();
+    network_core->ProcessDeliveries();
     network_core->is_dispatching_callbacks = false;
     return Status<void>::Success();
 }
