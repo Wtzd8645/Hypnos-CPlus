@@ -1,11 +1,11 @@
 # Prerequisites
 .next/
 .output/
-bin/
-build/
-obj/
-out/
-target/
+/[Bb]in/
+/[Bb]uild/
+/[Oo]bj/
+/[Oo]ut/
+/[Tt]arget/
 *.d
 
 # Compiled Object files

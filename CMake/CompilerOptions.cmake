@@ -1,0 +1,31 @@
+set(HypnosDebugOptions -g -O0 -DDEBUG)
+set(HypnosRelWithDebInfoOptions -g -O2 -DDEBUG)
+set(HypnosReleaseOptions -O3 -DNDEBUG)
+set(HypnosMinSizeRelOptions -Os -DNDEBUG)
+
+macro(ConfigureHypnosCompiler compiler)
+    if ("${compiler}" STREQUAL "GNU")
+        set(CMAKE_CXX_FLAGS_INIT "-Wall -Wextra")
+    endif()
+
+    if ("${compiler}" STREQUAL "GNU" OR "${compiler}" STREQUAL "Clang")
+        foreach(configuration IN ITEMS Debug RelWithDebInfo Release MinSizeRel)
+            string(TOUPPER "${configuration}" configurationUpper)
+            string(REPLACE ";" " " CMAKE_CXX_FLAGS_${configurationUpper} "${Hypnos${configuration}Options}")
+        endforeach()
+    elseif ("${compiler}" STREQUAL "MSVC")
+        set(CMAKE_CXX_FLAGS_INIT "/W4 /permissive-")
+        set(CMAKE_CXX_FLAGS_DEBUG "/MTd /Zi /Od /Ob0 /RTC1 /DDEBUG")
+        set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/MT /Zi /O2 /Ob1 /DDEBUG")
+        set(CMAKE_CXX_FLAGS_RELEASE "/MT /O2 /Ob2 /DNDEBUG")
+        set(CMAKE_CXX_FLAGS_MINSIZEREL "/MT /O1 /Ob2 /DNDEBUG")
+    endif()
+endmacro()
+
+function(ConfigureHypnosTarget target)
+    foreach(configuration IN ITEMS Debug RelWithDebInfo Release MinSizeRel)
+        target_compile_options("${target}" PRIVATE
+            "$<$<CONFIG:${configuration}>:${Hypnos${configuration}Options}>"
+        )
+    endforeach()
+endfunction()

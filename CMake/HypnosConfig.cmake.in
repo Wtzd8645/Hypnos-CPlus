@@ -1,6 +1,7 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(Hypnos-Core)
+find_dependency(Hypnos-Core CONFIG)
+find_dependency(Threads)
 
 include("${CMAKE_CURRENT_LIST_DIR}/HypnosTargets.cmake")
